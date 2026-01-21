@@ -9,9 +9,19 @@ AIGC:
     ReservedCode2: 3045022100d2b00bdaafa66f38bb84af1d6a7b631a0c81474cfb6deeac52476425646d1820022024242d716e60b3667437af746ee24a0a99f7ec9285fb7a3ea7b81cccdafbd3ff
 ---
 
-# React + TypeScript + Vite
+# 命理网站 - 专业命理服务平台
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+这是命理网站Fortell365的前端项目，使用React + TypeScript + Vite构建。
+
+## 功能特点
+- 提供专业的命理分析服务
+- 支持用户生成报告
+- 数据监控和统计分析
+
+## 技术栈
+- React 18 + TypeScript + Vite
+- Tailwind CSS
+- Supabase (后端服务)
 
 Currently, two official plugins are available:
 
