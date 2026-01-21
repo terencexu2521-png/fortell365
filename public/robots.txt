@@ -1,0 +1,12 @@
+# 灵感命理网站 - 搜索引擎爬虫规则
+# https://www.robotstxt.org/robotstxt.html
+
+User-agent: *
+Allow: /
+
+# 站点地图
+Sitemap: https://xzx06nhaeklf.space.minimaxi.com/sitemap.xml
+
+# 禁止爬取的路径（如有需要取消注释）
+# Disallow: /api/
+# Disallow: /admin/
