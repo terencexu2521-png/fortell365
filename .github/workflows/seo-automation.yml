@@ -1,212 +1,23 @@
-name: SEO Auto Generator
+name: Test Build
 
 on:
-  schedule:
-    - cron: '0 2 * * *'
   workflow_dispatch:
-    inputs:
-      count:
-        description: 'Number of articles to generate'
-        required: false
-        default: '30'
-        type: string
 
 jobs:
-  generate-seo:
+  test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Create SEO generator script
+
+    - name: Hello World
+      run: echo "Hello World"
+
+    - name: Create test file
       run: |
-        cat > seo_generator.py << 'EOF'
-#!/usr/bin/env python3
-import random
-import os
-from datetime import datetime
+        mkdir -p public/seo
+        echo "Test" > public/seo/test.html
 
-# Create directories
-os.makedirs('seo_pages', exist_ok=True)
-os.makedirs('public/seo', exist_ok=True)
-
-# Question templates for SEO content
-templates = [
-    "我是{age}岁还没谈过恋爱，八字是不是有啥问题？",
-    "{age}年属{animal}女和什么属相的男生最适合？",
-    "{year}年桃花运怎么样？什么时候能脱单？",
-    "我和属{animal}的人八字合不合？在一起会幸福吗？",
-    "属{animal}的{age}岁女生，感情运势如何？",
-    "从八字看，我和恋人的缘分深吗？",
-    "我的八字显示{emotion}运什么时候来？",
-    "命里显示的最佳脱单时机是什么时候？",
-    "{age}岁本命年，感情方面会有什么变化？",
-    "我是离异带孩，八字里还有没有再婚的缘分？"
-]
-
-# Variables
-ages = ["25", "28", "30", "32", "35", "38", "40"]
-animals = ["鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"]
-years = ["2025", "2026", "2027"]
-emotions = ["桃花", "正缘", "姻缘", "恋爱", "感情"]
-
-def generate_seo_content(question):
-    """Generate SEO-optimized HTML content"""
-    current_month = datetime.now().strftime("%Y年%m月")
-    
-    html_content = f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{question} | Fortell365专业命理</title>
-    <meta name="description" content="{question}专业命理分析，从八字紫微斗数角度解读感情运势。Fortell365提供专业命理指导。">
-    <meta name="keywords" content="八字,命理,紫微斗数,桃花运,正缘,姻缘,感情运势,脱单">
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }}
-        .header {{ text-align: center; margin-bottom: 40px; }}
-        .category {{ background: linear-gradient(135deg, #f5f3ff, #fef3c7); padding: 8px 16px; border-radius: 20px; font-size: 14px; color: #7c3aed; display: inline-block; }}
-        h1 {{ color: #1e293b; font-size: 2.5rem; margin: 20px 0; }}
-        .meta {{ color: #64748b; margin-bottom: 40px; }}
-        .content {{ background: white; padding: 40px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
-        h2 {{ color: #1e293b; font-size: 1.5rem; margin: 30px 0 15px 0; border-left: 4px solid #7c3aed; padding-left: 15px; }}
-        ul {{ margin: 15px 0; padding-left: 20px; }}
-        li {{ margin: 8px 0; }}
-        .cta {{ background: linear-gradient(135deg, #7c3aed, #a855f7); color: white; padding: 30px; border-radius: 12px; text-align: center; margin: 40px 0; }}
-        .cta h3 {{ margin: 0 0 10px 0; font-size: 1.3rem; }}
-        .cta p {{ margin: 0 0 20px 0; color: #f3f4f6; }}
-        .btn {{ background: white; color: #7c3aed; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="category">八字命理 · 感情运势</div>
-        <h1>{question}</h1>
-        <div class="meta">Fortell365 · 专业命理团队 · {current_month}</div>
-    </div>
-    
-    <div class="content">
-        <h2>一、这个问题为什么很多人会关心</h2>
-        <p>{question}是很多人关心的话题。在当今社会，人们对感情和婚姻的关注度越来越高。特别是随着年龄的增长，周围人对感情状态的关心和询问也越来越多。</p>
-        <p>很多人会在特定的人生阶段产生这样的疑问，这反映了人们对未来感情生活的期待和担忧。了解自己的命理运势，可以帮助我们更好地把握感情方向。</p>
-
-        <h2>二、从命理角度看，核心结论是什么</h2>
-        <p>从八字紫微斗数的角度来看，每个人的感情运势都有其独特的规律和节奏。命理不是宿命论，而是一种指导和参考。</p>
-        <p>八字显示的是一个人在感情方面的天赋、机遇和可能面临的挑战。通过分析命盘，我们可以了解自己在感情中的优势和改进方向。</p>
-
-        <h2>三、为什么会出现这种情况</h2>
-        <p>命理上的感情运势受多种因素影响：</p>
-        <ul>
-            <li><strong>原生八字结构</strong>：命盘中反映的先天性格特质和感情模式</li>
-            <li><strong>大运流年</strong>：不同时间段运势的变化和机遇</li>
-            <li><strong>五行平衡</strong>：个人五行特质对感情关系的影响</li>
-            <li><strong>社交环境</strong>：现实生活中的交友圈子和机会</li>
-        </ul>
-        <p>这些因素相互作用，共同构成了一个人的感情运势全貌。</p>
-
-        <h2>四、实用的改善建议</h2>
-        <p>基于命理分析，以下是一些实用的建议：</p>
-        <ul>
-            <li><strong>主动出击</strong>：扩大社交圈子，创造更多相识机会</li>
-            <li><strong>提升自我</strong>：从内外在两方面提升个人魅力</li>
-            <li><strong>时机把握</strong>：关注运势变化，在合适时机主动行动</li>
-            <li><strong>心态调整</strong>：保持积极心态，相信缘分自然到来</li>
-        </ul>
-
-        <h2>五、结语</h2>
-        <p>{question}这样的疑问很正常，说明您对感情生活有所期待。命理是一种文化传统和智慧传承，它能给我们提供一些参考和指导。</p>
-        <p>最重要的是，要相信自己的努力和真诚，同时保持开放的心态。Fortell365 致力于为每一位用户提供专业的命理分析，帮助大家更好地了解自己，把握感情机遇。</p>
-    </div>
-    
-    <div class="cta">
-        <h3>想了解更多命理奥秘？</h3>
-        <p>Fortell365提供专业的八字紫微斗数分析，个性化解读您的命理运势</p>
-        <a href="/generate/bazi" class="btn">生成八字报告</a>
-    </div>
-</body>
-</html>"""
-    
-    return html_content
-
-# Generate SEO articles
-generated_count = 0
-for i in range(30):
-    template = random.choice(templates)
-    question = template.format(
-        age=random.choice(ages),
-        animal=random.choice(animals),
-        year=random.choice(years),
-        emotion=random.choice(emotions)
-    )
-    
-    # Generate filename
-    filename = f"seo-{question.replace('？', '').replace('，', '').replace('？', '').replace('？', '')[:30]}.html"
-    filepath = os.path.join("seo_pages", filename)
-    
-    # Generate content
-    html_content = generate_seo_content(question)
-    
-    # Save file
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-    
-    generated_count += 1
-
-print(f"✅ 成功生成 {generated_count} 篇SEO文章")
-        EOF
-    
-    - name: Generate SEO articles
+    - name: List files
       run: |
-        python3 seo_generator.py
-        
-        # Verify files were created
-        FILE_COUNT=$(find seo_pages -name "*.html" | wc -l)
-        echo "生成的文件数量: $FILE_COUNT"
-        
-        if [ $FILE_COUNT -gt 0 ]; then
-          echo "✅ SEO文章生成成功"
-          # Copy to public directory
-          mkdir -p public/seo
-          cp seo_pages/*.html public/seo/
-          echo "✅ 文件复制完成"
-        else
-          echo "❌ 没有生成HTML文件"
-          exit 1
-        fi
-    
-    - name: Commit and push
-      run: |
-        git config --global user.name "Fortell365 Bot"
-        git config --global user.email "bot@fortell365.com"
-        
-        git add public/seo/
-        
-        if git diff --cached --quiet; then
-          echo "没有变更需要提交"
-          exit 0
-        fi
-        
-        FILE_COUNT=$(find seo_pages -name "*.html" | wc -l)
-        git commit -m "🤖 Auto SEO content - $FILE_COUNT articles
-
-- Generated: $(date '+%Y-%m-%d %H:%M:%S')
-- Articles: $FILE_COUNT
-- Template: Fortell365命理SEO"
-        
-        git push origin main
-        echo "✅ 推送到GitHub成功"
-    
-    - name: Success notification
-      run: |
-        FILE_COUNT=$(find seo_pages -name "*.html" | wc -l)
-        echo "🎉 SEO自动化部署成功完成！"
-        echo "📊 生成统计："
-        echo "   - 文章数量: $FILE_COUNT"
-        echo "   - 生成时间: $(date)"
-        echo "   - 主题: 八字命理感情运势"
-        echo "   - 仓库: ${{ github.repository }}"
+        ls -la public/seo/
