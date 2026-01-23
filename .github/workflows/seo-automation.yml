@@ -1,4 +1,4 @@
-name: Generate and Deploy SEO Content
+name: Fortell365 SEO 自动化系统
 
 on:
   # 定时任务：每天自动执行
@@ -8,32 +8,32 @@ on:
   workflow_dispatch:
     inputs:
       count:
-        description: 'Number of articles to generate'
+        description: '生成文章数量'
         required: false
         default: '30'
         type: string
 
 jobs:
-  generate-and-deploy:
+  generate-seo-content:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository
+    - name: 检出仓库代码
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.FORTELL365_PAT }}
         fetch-depth: 0
         
-    - name: Set up Python
+    - name: 设置Python环境
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
         
-    - name: Install dependencies
+    - name: 安装依赖
       run: |
         python -m pip install --upgrade pip
         
-    - name: Generate SEO content
+    - name: 生成SEO内容
       run: |
         # 创建输出目录
         mkdir -p public/seo
@@ -41,85 +41,101 @@ jobs:
         # 生成指定数量的文章
         python generate_seo_content.py
         
-    - name: List generated files
+    - name: 查看生成的文件
       run: |
-        echo "Generated files:"
+        echo "📁 生成的文件列表："
         ls -la seo_pages/
         
-    - name: Move files to public/seo
+    - name: 移动文件到网站目录
       run: |
-        # 将生成的文件移动到正确的位置
         if [ -d "seo_pages" ]; then
           cp seo_pages/*.html public/seo/
-          echo "Files moved to public/seo/"
+          echo "✅ 文件已移动到 public/seo/"
           ls -la public/seo/
         else
-          echo "No generated files found!"
+          echo "❌ 未找到生成的文件！"
           exit 1
         fi
         
-    - name: Create deployment summary
+    - name: 创建部署摘要
       run: |
-        # 创建部署摘要
-        echo "# Fortell365 SEO Content Deployment" > deployment_summary.md
+        echo "# Fortell365 SEO 内容部署报告" > deployment_summary.md
         echo "" >> deployment_summary.md
-        echo "Generated at: $(date)" >> deployment_summary.md
+        echo "📅 生成时间: $(date)" >> deployment_summary.md
+        echo "🤖 执行方式: ${{ github.event_name }}" >> deployment_summary.md
         echo "" >> deployment_summary.md
         
         if [ -d "public/seo" ]; then
-          echo "## Generated Files" >> deployment_summary.md
+          echo "## 📋 生成的文件列表" >> deployment_summary.md
           ls -la public/seo/*.html | while read line; do
             filename=$(basename "$line")
             echo "- $filename" >> deployment_summary.md
           done
+          echo "" >> deployment_summary.md
+          echo "🌐 访问地址: https://fortell365.com/seo/" >> deployment_summary.md
         fi
         
+        echo "📊 部署摘要："
         cat deployment_summary.md
         
-    - name: Commit and push changes
+    - name: 提交并推送变更
       uses: stefanzweifel/git-auto-commit-action@v4
       with:
         commit_message: |
-          🤖 Auto-generated SEO content
+          🤖 自动生成SEO内容 - ${{ github.event_name == 'schedule' && '定时任务' || '手动触发' }}
           
-          - Generated on: ${{ github.event.head_commit.timestamp || 'manual trigger' }}
-          - Articles count: ${{ github.event.inputs.count || '30' }}
+          📅 生成时间: $(date)
+          📝 文章数量: ${{ github.event.inputs.count || '30' }}
+          🎯 执行方式: ${{ github.event_name }}
           
-          Files added:
-          ${{ steps.changes.outputs.all_changed_files }}
+          📋 新增文件:
+          ${{ steps.changes.outputs.all_changed_files || '新增SEO页面' }}
         branch: main
         commit_author_name: "Fortell365 Bot"
         commit_author_email: "bot@fortell365.com"
         
-    - name: Upload deployment artifacts
+    - name: 上传部署报告
       uses: actions/upload-artifact@v3
       if: always()
       with:
-        name: seo-deployment-summary
+        name: seo-deployment-report
         path: |
           seo_pages/
           deployment_summary.md
         retention-days: 7
 
-  notify-deployment:
-    needs: generate-and-deploy
+  notify-success:
+    needs: generate-seo-content
     runs-on: ubuntu-latest
-    if: always()
+    if: success()
     
     steps:
-    - name: Download artifacts
+    - name: 下载部署报告
       uses: actions/download-artifact@v3
       with:
-        name: seo-deployment-summary
+        name: seo-deployment-report
         path: ./
         
-    - name: Create notification
+    - name: 显示成功通知
       run: |
-        if [ "${{ needs.generate-and-deploy.result }}" = "success" ]; then
-          echo "✅ SEO content deployment completed successfully!"
-          echo "📊 Generated content summary:"
-          cat deployment_summary.md
-        else
-          echo "❌ SEO content deployment failed!"
-          echo "Please check the logs for more details."
-        fi
+        echo "🎉 SEO内容生成成功！"
+        echo ""
+        echo "📊 部署详情："
+        cat deployment_summary.md
+        echo ""
+        echo "🌐 立即访问: https://fortell365.com/seo/"
+
+  notify-failure:
+    needs: generate-seo-content
+    runs-on: ubuntu-latest
+    if: failure()
+    
+    steps:
+    - name: 显示失败通知
+      run: |
+        echo "❌ SEO内容生成失败！"
+        echo ""
+        echo "🔧 请检查以下内容："
+        echo "1. 检查 GitHub Actions 执行日志"
+        echo "2. 确认 FORTELL365_PAT Secret 已正确设置"
+        echo "3. 检查 generate_seo_content.py 文件是否存在"
