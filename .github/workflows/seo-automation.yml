@@ -1,4 +1,4 @@
-name: Fortell365 SEO 自动化系统
+name: Generate and Deploy SEO Content
 
 on:
   # 定时任务：每天自动执行
@@ -8,134 +8,214 @@ on:
   workflow_dispatch:
     inputs:
       count:
-        description: '生成文章数量'
+        description: 'Number of articles to generate'
         required: false
         default: '30'
         type: string
 
 jobs:
-  generate-seo-content:
+  generate-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 检出仓库代码
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.FORTELL365_PAT }}
+        token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
         
-    - name: 设置Python环境
+    - name: Get changed files
+      id: changes
+      run: |
+        echo "changed_files=$(git diff --name-only HEAD~1 HEAD | grep -E '\.(html|json|md)$' | wc -l)" >> $GITHUB_OUTPUT
+        
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
         
-    - name: 安装依赖
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install -r requirements.txt
         
-    - name: 生成SEO内容
+    - name: Generate SEO content
       run: |
         # 创建输出目录
         mkdir -p public/seo
+        mkdir -p seo_pages
+        
+        # 获取要生成的文章数量
+        COUNT=${INPUT_COUNT:-30}
+        if [ -z "$COUNT" ]; then
+          COUNT="30"
+        fi
+        
+        echo "生成 $COUNT 篇文章..."
         
         # 生成指定数量的文章
         python generate_seo_content.py
         
-    - name: 查看生成的文件
-      run: |
-        echo "📁 生成的文件列表："
-        ls -la seo_pages/
-        
-    - name: 移动文件到网站目录
-      run: |
-        if [ -d "seo_pages" ]; then
-          cp seo_pages/*.html public/seo/
-          echo "✅ 文件已移动到 public/seo/"
-          ls -la public/seo/
-        else
-          echo "❌ 未找到生成的文件！"
+        # 验证生成结果
+        if [ ! -d "seo_pages" ]; then
+          echo "错误：没有生成seo_pages目录"
           exit 1
         fi
         
-    - name: 创建部署摘要
-      run: |
-        echo "# Fortell365 SEO 内容部署报告" > deployment_summary.md
-        echo "" >> deployment_summary.md
-        echo "📅 生成时间: $(date)" >> deployment_summary.md
-        echo "🤖 执行方式: ${{ github.event_name }}" >> deployment_summary.md
-        echo "" >> deployment_summary.md
-        
-        if [ -d "public/seo" ]; then
-          echo "## 📋 生成的文件列表" >> deployment_summary.md
-          ls -la public/seo/*.html | while read line; do
-            filename=$(basename "$line")
-            echo "- $filename" >> deployment_summary.md
-          done
-          echo "" >> deployment_summary.md
-          echo "🌐 访问地址: https://fortell365.com/seo/" >> deployment_summary.md
+        if [ -z "$(ls -A seo_pages/*.html 2>/dev/null)" ]; then
+          echo "错误：没有生成HTML文件"
+          ls -la seo_pages/
+          exit 1
         fi
         
-        echo "📊 部署摘要："
-        cat deployment_summary.md
+        echo "✅ SEO内容生成成功"
+        echo "生成的文件数量: $(ls seo_pages/*.html | wc -l)"
         
-    - name: 提交并推送变更
-      uses: stefanzweifel/git-auto-commit-action@v4
-      with:
-        commit_message: |
-          🤖 自动生成SEO内容 - ${{ github.event_name == 'schedule' && '定时任务' || '手动触发' }}
-          
-          📅 生成时间: $(date)
-          📝 文章数量: ${{ github.event.inputs.count || '30' }}
-          🎯 执行方式: ${{ github.event_name }}
-          
-          📋 新增文件:
-          ${{ steps.changes.outputs.all_changed_files || '新增SEO页面' }}
-        branch: main
-        commit_author_name: "Fortell365 Bot"
-        commit_author_email: "bot@fortell365.com"
+    - name: List generated files
+      run: |
+        echo "=== 生成的文件列表 ==="
+        echo "seo_pages/ 目录内容:"
+        ls -la seo_pages/
+        echo ""
+        echo "HTML文件:"
+        ls -la seo_pages/*.html | head -10
+        echo "..."
+        echo "总共生成 $(ls seo_pages/*.html | wc -l) 个HTML文件"
         
-    - name: 上传部署报告
-      uses: actions/upload-artifact@v3
+    - name: Move files to public/seo
+      run: |
+        # 将生成的文件移动到正确的位置
+        if [ -d "seo_pages" ] && [ -n "$(ls -A seo_pages/*.html 2>/dev/null)" ]; then
+          echo "正在复制文件到 public/seo/"
+          cp seo_pages/*.html public/seo/
+          echo "✅ 文件复制完成"
+          echo "public/seo/ 目录内容:"
+          ls -la public/seo/*.html | head -10
+          echo "..."
+        else
+          echo "❌ 没有找到可复制的文件"
+          exit 1
+        fi
+        
+    - name: Create deployment summary
+      run: |
+        # 创建部署摘要
+        SUMMARY_FILE="deployment_summary.md"
+        echo "# Fortell365 SEO Content Deployment" > $SUMMARY_FILE
+        echo "" >> $SUMMARY_FILE
+        echo "Generated at: $(date)" >> $SUMMARY_FILE
+        echo "GitHub Actions Run: ${{ github.run_number }}" >> $SUMMARY_FILE
+        echo "Trigger: ${{ github.event_name }}" >> $SUMMARY_FILE
+        echo "" >> $SUMMARY_FILE
+        
+        if [ -d "public/seo" ] && [ -n "$(ls -A public/seo/*.html 2>/dev/null)" ]; then
+          echo "## Generated Files" >> $SUMMARY_FILE
+          echo "Total files: $(ls public/seo/*.html | wc -l)" >> $SUMMARY_FILE
+          echo "" >> $SUMMARY_FILE
+          echo "Latest generated files:" >> $SUMMARY_FILE
+          ls -lt public/seo/*.html | head -10 | while read line; do
+            filename=$(basename "$line")
+            echo "- $filename" >> $SUMMARY_FILE
+          done
+        fi
+        
+        echo "" >> $SUMMARY_FILE
+        echo "## Deployment Info" >> $SUMMARY_FILE
+        echo "- Repository: ${{ github.repository }}" >> $SUMMARY_FILE
+        echo "- Branch: ${{ github.ref_name }}" >> $SUMMARY_FILE
+        echo "- Commit: ${{ github.sha }}" >> $SUMMARY_FILE
+        
+        cat $SUMMARY_FILE
+        
+    - name: Add and commit changes
+      run: |
+        # 配置git
+        git config --global user.name "Fortell365 Bot"
+        git config --global user.email "bot@fortell365.com"
+        
+        # 检查是否有变更
+        git add public/seo/
+        git add seo_pages/
+        git add deployment_summary.md
+        
+        # 检查是否有变更需要提交
+        if git diff --cached --quiet; then
+          echo "没有变更需要提交"
+          exit 0
+        fi
+        
+        # 生成提交信息
+        FILE_COUNT=$(ls seo_pages/*.html 2>/dev/null | wc -l)
+        COMMIT_MSG="🤖 Auto-generated SEO content - $FILE_COUNT articles
+
+- Generated on: $(date '+%Y-%m-%d %H:%M:%S')
+- Trigger: ${{ github.event_name }}
+- Articles count: $FILE_COUNT
+
+Files added:
+$(git diff --cached --name-only)"
+        
+        # 提交变更
+        git commit -m "$COMMIT_MSG"
+        
+        # 推送到GitHub
+        git push origin main
+        
+        echo "✅ 变更已推送到GitHub"
+        
+    - name: Trigger Vercel deployment
+      run: |
+        echo "🚀 准备触发Vercel部署..."
+        
+        # 获取最新的commit SHA
+        LATEST_SHA=$(git rev-parse HEAD)
+        echo "最新提交SHA: $LATEST_SHA"
+        
+        echo "✅ SEO内容已成功部署到GitHub"
+        echo "📊 生成统计:"
+        echo "   - 新增文件: $(ls seo_pages/*.html 2>/dev/null | wc -l) 个HTML文件"
+        echo "   - 提交SHA: $LATEST_SHA"
+        echo "   - 仓库: ${{ github.repository }}"
+        echo ""
+        echo "🔄 Vercel将自动检测到变更并开始部署..."
+        echo "💡 您可以在以下链接查看部署进度："
+        echo "   https://vercel.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/deployments"
+        
+    - name: Upload deployment artifacts
+      uses: actions/upload-artifact@v4  # ✅ 已升级到v4版本
       if: always()
       with:
-        name: seo-deployment-report
+        name: seo-deployment-summary
         path: |
           seo_pages/
           deployment_summary.md
         retention-days: 7
 
-  notify-success:
-    needs: generate-seo-content
+  notify-deployment:
+    needs: generate-and-deploy
     runs-on: ubuntu-latest
-    if: success()
+    if: always()
     
     steps:
-    - name: 下载部署报告
-      uses: actions/download-artifact@v3
+    - name: Download artifacts
+      uses: actions/download-artifact@v4  # ✅ 已升级到v4版本
       with:
-        name: seo-deployment-report
+        name: seo-deployment-summary
         path: ./
         
-    - name: 显示成功通知
+    - name: Create notification
       run: |
-        echo "🎉 SEO内容生成成功！"
-        echo ""
-        echo "📊 部署详情："
-        cat deployment_summary.md
-        echo ""
-        echo "🌐 立即访问: https://fortell365.com/seo/"
-
-  notify-failure:
-    needs: generate-seo-content
-    runs-on: ubuntu-latest
-    if: failure()
-    
-    steps:
-    - name: 显示失败通知
-      run: |
-        echo "❌ SEO内容生成失败！"
-        echo ""
-        echo "🔧 请检查以下内容："
-        echo "1. 检查 GitHub Actions 执行日志"
-        echo "2. 确认 FORTELL365_PAT Secret 已正确设置"
-        echo "3. 检查 generate_seo_content.py 文件是否存在"
+        if [ "${{ needs.generate-and-deploy.result }}" = "success" ]; then
+          echo "🎉 SEO内容部署成功完成！"
+          echo ""
+          echo "📊 部署摘要："
+          if [ -f "deployment_summary.md" ]; then
+            cat deployment_summary.md
+          else
+            echo "部署摘要文件不存在"
+          fi
+        else
+          echo "❌ SEO内容部署失败！"
+          echo "请检查日志获取更多详细信息。"
+          exit 1
+        fi
