@@ -1,4 +1,4 @@
-name: SEO Automation
+name: Simple SEO Generator
 
 on:
   schedule:
@@ -12,7 +12,7 @@ on:
         type: string
 
 jobs:
-  generate-and-deploy:
+  generate-seo:
     runs-on: ubuntu-latest
     
     steps:
@@ -20,69 +20,127 @@ jobs:
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0
-        
-    - name: Debug directory structure
-      run: |
-        echo "=== 当前目录结构 ==="
-        pwd
-        ls -la
-        echo ""
-        echo "=== 检查Python脚本 ==="
-        find . -name "generate_seo_content.py" -type f
-        echo ""
-        echo "=== 当前目录文件 ==="
-        ls -la *.py
-        
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests beautifulsoup4 lxml python-dateutil jinja2
-        
+    
     - name: Generate SEO content
       run: |
-        echo "=== 检查目录结构 ==="
-        ls -la
-        echo ""
+        # 创建Python脚本内容
+        cat > temp_seo_generator.py << 'EOF'
+#!/usr/bin/env python3
+import random
+import os
+from datetime import datetime
+
+# 命理关键词
+bazi_keywords = ["八字", "命理", "紫微斗数", "星盘", "桃花运", "正缘", "姻缘"]
+
+# 问题模板
+questions = [
+    "我是{age}岁还没谈过恋爱，八字是不是有啥问题？",
+    "{age}年属{animal}女和什么属相的男生最适合？",
+    "{year}年桃花运怎么样？什么时候能脱单？",
+    "我和属{animal}的人八字合不合？在一起会幸福吗？",
+    "属{animal}的{age}岁女生，感情运势如何？"
+]
+
+# 年龄和属相
+ages = ["25", "28", "30", "32", "35", "38", "40"]
+animals = ["鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"]
+years = ["2025", "2026", "2027"]
+
+# 创建目录
+os.makedirs("seo_pages", exist_ok=True)
+os.makedirs("public/seo", exist_ok=True)
+
+# 生成SEO文章
+for i in range(30):
+    question = random.choice(questions).format(
+        age=random.choice(ages),
+        animal=random.choice(animals),
+        year=random.choice(years)
+    )
+    
+    # 生成HTML内容
+    html_content = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{question} | Fortell365专业命理</title>
+  <meta name="description" content="{question}专业命理分析">
+</head>
+<body>
+  <article class="max-w-3xl mx-auto px-4 py-12">
+    <div class="text-center mb-10">
+      <span class="inline-block px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm mb-4">八字命理 · 感情运势</span>
+      <h1 class="text-3xl md:text-4xl font-bold text-slate-900 mb-4 leading-tight">{question}</h1>
+      <p class="text-slate-500">Fortell365 · 专业命理团队 · {datetime.now().strftime("%Y年%m月")}</p>
+    </div>
+    
+    <div class="prose prose-slate max-w-none bg-white rounded-2xl p-8 shadow-sm">
+      <h2>一、这个问题为什么很多人会关心</h2>
+      <p>{question}是很多人关心的话题。在当今社会，人们对感情和婚姻的关注度越来越高。</p>
+      
+      <h2>二、从命理角度看，核心结论是什么</h2>
+      <p>从八字紫微斗数的角度来看，每个人的感情运势都有其独特的规律和节奏。</p>
+      
+      <h2>三、为什么会出现这种情况</h2>
+      <p>命理上的感情运势受多种因素影响，包括原生八字结构、大运流年等。</p>
+      
+      <h2>四、实用的改善建议</h2>
+      <ul>
+        <li><strong>主动出击</strong>：扩大社交圈子，创造更多相识机会</li>
+        <li><strong>提升自我</strong>：从内外在两方面提升个人魅力</li>
+        <li><strong>时机把握</strong>：关注运势变化，在合适时机主动行动</li>
+      </ul>
+      
+      <h2>五、结语</h2>
+      <p>{question}这样的疑问很正常，说明您对感情生活有所期待。命理是一种文化传统和智慧传承。</p>
+    </div>
+    
+    <div class="text-center mt-8">
+      <a href="/generate/bazi" class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+        生成八字报告
+      </a>
+    </div>
+  </article>
+</body>
+</html>"""
+    
+    # 保存文件
+    filename = f"seo-{question.replace('？', '').replace('，', '').replace('？', '')[:30]}.html"
+    filepath = os.path.join("seo_pages", filename)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
+print(f"✅ 生成了30篇SEO文章")
+        EOF
         
-        # 查找Python脚本
-        SCRIPT_PATH=$(find . -name "generate_seo_content.py" -type f | head -1)
-        echo "找到脚本路径: $SCRIPT_PATH"
+        # 运行脚本
+        python temp_seo_generator.py
         
-        if [ -z "$SCRIPT_PATH" ]; then
-          echo "❌ 没有找到 generate_seo_content.py 文件"
+        # 验证结果
+        if [ -d "seo_pages" ]; then
+          echo "✅ 目录存在"
+          FILE_COUNT=$(ls seo_pages/*.html 2>/dev/null | wc -l)
+          echo "生成文件数量: $FILE_COUNT"
+          
+          if [ $FILE_COUNT -gt 0 ]; then
+            echo "✅ 文件生成成功"
+            # 复制到public/seo
+            mkdir -p public/seo
+            cp seo_pages/*.html public/seo/
+            echo "✅ 文件复制完成"
+          else
+            echo "❌ 没有生成HTML文件"
+            exit 1
+          fi
+        else
+          echo "❌ seo_pages目录不存在"
           exit 1
         fi
-        
-        echo "=== 运行脚本 ==="
-        python "$SCRIPT_PATH"
-        
-        # 验证生成结果
-        if [ ! -d "seo_pages" ]; then
-          echo "❌ 没有生成seo_pages目录"
-          exit 1
-        fi
-        
-        FILE_COUNT=$(ls seo_pages/*.html 2>/dev/null | wc -l)
-        if [ $FILE_COUNT -eq 0 ]; then
-          echo "❌ 没有生成HTML文件"
-          exit 1
-        fi
-        
-        echo "✅ 生成 $FILE_COUNT 个文件"
-        
-    - name: Copy files to public
-      run: |
-        mkdir -p public/seo
-        cp seo_pages/*.html public/seo/
-        echo "✅ 文件复制完成"
-        
-    - name: Commit and push changes
+    
+    - name: Commit and push
       run: |
         git config --global user.name "Fortell365 Bot"
         git config --global user.email "bot@fortell365.com"
@@ -95,11 +153,11 @@ jobs:
         fi
         
         FILE_COUNT=$(ls seo_pages/*.html 2>/dev/null | wc -l)
-        git commit -m "🤖 Auto SEO content - $FILE_COUNT articles"
+        git commit -m "🤖 Auto SEO content - $FILE_COUNT articles - $(date '+%Y-%m-%d %H:%M:%S')"
         git push origin main
         echo "✅ 推送到GitHub成功"
         
-    - name: Show success
+    - name: Success message
       run: |
         echo "🎉 SEO自动化部署成功！"
         echo "📊 生成统计："
