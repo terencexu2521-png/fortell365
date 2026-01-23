@@ -29,26 +29,35 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install --no-cache-dir -r requirements.txt
+        pip install requests beautifulsoup4 lxml python-dateutil jinja2
         
     - name: Generate SEO content
       run: |
-        mkdir -p public/seo
+        echo "开始生成SEO内容..."
         mkdir -p seo_pages
         python generate_seo_content.py
         
-        FILE_COUNT=$(ls seo_pages/*.html 2>/dev/null | wc -l)
-        echo "生成文件数量: $FILE_COUNT"
-        
-        if [ $FILE_COUNT -eq 0 ]; then
-          echo "❌ 没有生成文件"
+        # 验证生成结果
+        if [ ! -d "seo_pages" ]; then
+          echo "❌ 没有生成seo_pages目录"
           exit 1
         fi
         
+        FILE_COUNT=$(ls seo_pages/*.html 2>/dev/null | wc -l)
+        if [ $FILE_COUNT -eq 0 ]; then
+          echo "❌ 没有生成HTML文件"
+          exit 1
+        fi
+        
+        echo "✅ 生成 $FILE_COUNT 个文件"
+        
+    - name: Copy files to public
+      run: |
+        mkdir -p public/seo
         cp seo_pages/*.html public/seo/
         echo "✅ 文件复制完成"
         
-    - name: Commit and push
+    - name: Commit and push changes
       run: |
         git config --global user.name "Fortell365 Bot"
         git config --global user.email "bot@fortell365.com"
@@ -56,11 +65,19 @@ jobs:
         git add public/seo/
         
         if git diff --cached --quiet; then
-          echo "没有变更"
+          echo "没有变更需要提交"
           exit 0
         fi
         
         FILE_COUNT=$(ls seo_pages/*.html 2>/dev/null | wc -l)
-        git commit -m "🤖 SEO content - $FILE_COUNT files"
+        git commit -m "🤖 Auto SEO content - $FILE_COUNT articles"
         git push origin main
-        echo "✅ 已推送到GitHub"
+        echo "✅ 推送到GitHub成功"
+        
+    - name: Show success
+      run: |
+        echo "🎉 SEO自动化部署成功！"
+        echo "📊 生成统计："
+        echo "   - 文章数量: $(ls seo_pages/*.html 2>/dev/null | wc -l)"
+        echo "   - 时间: $(date)"
+        echo "   - 仓库: ${{ github.repository }}"
