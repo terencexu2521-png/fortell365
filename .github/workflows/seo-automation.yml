@@ -1,23 +1,45 @@
-name: Test Build
+name: SEO Generator
 
 on:
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Hello World
-      run: echo "Hello World"
-
-    - name: Create test file
+    - name: Create SEO files
       run: |
         mkdir -p public/seo
-        echo "Test" > public/seo/test.html
+        echo "SEO文件生成中..."
+        
+        # 创建10个HTML文件
+        for i in {1..10}; do
+          echo "<h1>八字命理文章 $i</h1>" > public/seo/article_$i.html
+          echo "<p>Fortell365专业命理分析服务</p>" >> public/seo/article_$i.html
+          echo "<p>文章内容包含八字、属相、感情运势等话题</p>" >> public/seo/article_$i.html
+        done
+        
+        echo "生成完成"
 
     - name: List files
       run: |
         ls -la public/seo/
+        echo "文件数量: $(ls public/seo/*.html | wc -l)"
+
+    - name: Commit
+      run: |
+        git config --global user.name "Bot"
+        git config --global user.email "bot@example.com"
+        git add public/seo/
+        git commit -m "SEO文章生成 - $(date)" || echo "No changes"
+        git push || echo "Push failed"
+
+    - name: Success
+      run: |
+        echo "SEO生成完成！"
+        echo "生成文章数量: $(ls public/seo/*.html | wc -l)"
