@@ -20,6 +20,19 @@ jobs:
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+        
+    - name: Debug directory structure
+      run: |
+        echo "=== 当前目录结构 ==="
+        pwd
+        ls -la
+        echo ""
+        echo "=== 检查Python脚本 ==="
+        find . -name "generate_seo_content.py" -type f
+        echo ""
+        echo "=== 当前目录文件 ==="
+        ls -la *.py
         
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -33,9 +46,21 @@ jobs:
         
     - name: Generate SEO content
       run: |
-        echo "开始生成SEO内容..."
-        mkdir -p seo_pages
-        python generate_seo_content.py
+        echo "=== 检查目录结构 ==="
+        ls -la
+        echo ""
+        
+        # 查找Python脚本
+        SCRIPT_PATH=$(find . -name "generate_seo_content.py" -type f | head -1)
+        echo "找到脚本路径: $SCRIPT_PATH"
+        
+        if [ -z "$SCRIPT_PATH" ]; then
+          echo "❌ 没有找到 generate_seo_content.py 文件"
+          exit 1
+        fi
+        
+        echo "=== 运行脚本 ==="
+        python "$SCRIPT_PATH"
         
         # 验证生成结果
         if [ ! -d "seo_pages" ]; then
