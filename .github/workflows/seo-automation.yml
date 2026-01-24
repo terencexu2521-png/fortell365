@@ -14,39 +14,22 @@ jobs:
       with:
         python-version: '3.9'
     - run: |
-        echo "🚀 开始生成SEO文章..."
-        mkdir -p public/seo seo_pages
+        echo "开始生成文章"
+        mkdir -p public/seo
         
-        # 生成30篇文章
-        for i in {1..30}; do
-          echo "生成第 $i 篇文章..."
-          
-          cat > "public/seo/seo-article-$i.html" << EOF
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <title>Fortell365专业命理 - 第$i篇文章</title>
-</head>
-<body>
-    <h1>Fortell365 专业命理分析</h1>
-    <h2>第$i篇文章</h2>
-    <p>这是一篇专业的八字紫微斗数分析文章。</p>
-    <p>基于您的八字特征，我们提供专业的命理建议。</p>
-    <p>想了解更多？访问 Fortell365 获取专属报告。</p>
-</body>
-</html>
-EOF
+        # 生成10篇简单文章（先测试功能）
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          echo "<!DOCTYPE html><html><head><title>文章$i</title></head><body><h1>Fortell365文章$i</h1><p>专业命理分析</p></body></html>" > "public/seo/article-$i.html"
+          echo "生成文章$i"
         done
         
-        echo "✅ 完成！生成30篇文章"
-        ls public/seo/ | wc -l
+        echo "生成完成！"
         
     - run: |
-        git config user.name "Fortell365 Bot"
-        git config user.email "bot@fortell365.com"
+        git config user.name "Bot"
+        git config user.email "bot@example.com"
         git add public/seo/
-        git commit -m "🤖 Auto-generated 30 SEO articles"
-        git push origin main || echo "Push failed"
+        git commit -m "生成10篇文章"
+        git push origin main || echo "推送失败"
         
-        echo "✅ 完成！"
+        echo "完成！"
