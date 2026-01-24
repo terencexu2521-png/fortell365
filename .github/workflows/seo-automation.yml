@@ -1,49 +1,198 @@
 name: SEO Generator
+
 # 添加权限配置，确保有写入权限
 permissions:
-  contents: write
+contents: write
+
 on:
-  schedule:
-    - cron: '0 2 * * *'
-  workflow_dispatch:
+schedule:
+- cron: '0 2 * * *'
+workflow_dispatch:
 
 jobs:
-  generate:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    - run: |
-        echo "Starting SEO generation"
-        
-        # Create directories
-        mkdir -p public/seo
-        mkdir -p seo_pages
-        
-        # Generate simple articles
-        echo "<h1>25岁还没谈过恋爱，八字是不是有啥问题？</h1>" > seo_pages/article1.html
-        echo "<h1>30年属兔女和什么属相的男生最适合？</h1>" >> seo_pages/article1.html
-        echo "<h1>2025年桃花运怎么样？什么时候能脱单？</h1>" >> seo_pages/article1.html
-        
-        # Copy to public
-        cp seo_pages/article1.html public/seo/
-        
-        # Generate more articles
-        for i in {2..30}; do
-          echo "<h1>SEO Article $i</h1><p>Fortell365专业命理分析</p>" > seo_pages/article$i.html
-          cp seo_pages/article$i.html public/seo/
-        done
-        
-        echo "Generated 30 articles"
-        ls seo_pages/
-        
-    - run: |
-        git config --global user.name "Bot"
-        git config --global user.email "bot@example.com"
-        git add public/seo/ seo_pages/
-        git commit -m "SEO articles generated" || echo "No changes"
-        git push origin main || echo "Push failed"
-        
-        echo "✅ Complete! Generated $(ls seo_pages/*.html | wc -l) articles"
+generate:
+runs-on: ubuntu-latest
+steps:
+- uses: actions/checkout@v4
+with:
+token: ${{ secrets.GITHUB_TOKEN }}
+- uses: actions/setup-python@v4
+with:
+python-version: '3.9'
+- name: Setup directories
+run: |
+echo "📁 设置目录结构"
+mkdir -p public/seo
+mkdir -p seo_pages
+echo "✅ 目录创建完成"
+- name: Generate SEO content
+run: |
+echo "🚀 开始生成SEO文章..."
+
+# 创建索引文件
+cat > seo_pages/index.json << 'EOF'
+{
+"generated_at": "2026-01-24",
+"total_articles": 30,
+"articles": []
+}
+EOF
+
+# 生成30篇SEO文章
+questions=(
+"25岁还没谈过恋爱，八字是不是有啥问题？"
+"30年属兔女和什么属相的男生最适合？"
+"2025年桃花运怎么样？什么时候能脱单？"
+"属鼠和属兔的八字配对分析"
+"八字显示的最佳脱单时机"
+"30岁本命年感情运势如何？"
+"属蛇女生感情运势预测"
+"八字中正缘出现的特征"
+"25岁女生感情发展方向"
+"属龙和属猴的配对分析"
+"八字婚姻宫详解"
+"桃花运旺盛的八字特征"
+"感情不顺的八字化解方法"
+"30岁单身女生的脱单指南"
+"属虎女生最佳配偶属相"
+"八字中婚姻运势的判断"
+"28岁女生感情运势分析"
+"属鸡和属羊的八字配对"
+"八字中配偶信息的获取"
+"25岁男生桃花运势"
+"32岁女性感情发展趋势"
+"属猪和属牛的配对分析"
+"八字中烂桃花的识别"
+"感情稳定期的八字特征"
+"30岁男士感情运势"
+"属蛇和属虎的配对"
+"八字中夫妻感情的预测"
+"35岁女性脱单机会"
+"属猴和属鼠的八字配对"
+"八字显示的婚姻时机"
+)
+
+# 生成HTML文章
+for i in {1..30}; do
+question="${questions[$i-1]}"
+filename="seo-article-$i.html"
+
+cat > "seo_pages/$filename" << EOF
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>$question | Fortell365专业命理</title>
+<meta name="description" content="$question专业八字紫微斗数分析">
+<meta name="keywords" content="八字,命理,Fortell365,感情运势">
+</head>
+<body style="font-family: 'Microsoft YaHei', Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6;">
+<header style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 12px; margin-bottom: 30px;">
+<h1 style="margin: 0; font-size: 28px;">Fortell365 专业命理</h1>
+<p style="margin: 10px 0 0 0; opacity: 0.9;">深度八字紫微斗数分析</p>
+</header>
+
+<article style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+<h2 style="color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;">$question</h2>
+
+<div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3498db;">
+<h3 style="color: #34495e; margin-top: 0;">命理分析要点</h3>
+<p>从八字的角度来看，这是一个非常值得关注的问题。每个人的感情运势都有其独特的规律和节奏，需要结合个人八字进行具体分析。</p>
+</div>
+
+<div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
+<h3 style="color: #856404; margin-top: 0;">专业建议</h3>
+<p>基于您的八字特征分析，我们建议您保持积极的心态，相信缘分自然会到来。同时，可以通过改善个人形象、提升内在修养来增加吸引力。</p>
+</div>
+
+<div style="background: #d1ecf1; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #17a2b8;">
+<h3 style="color: #0c5460; margin-top: 0;">感情运势提示</h3>
+<p>根据您的八字配置，近期感情方面可能会有积极的发展。保持开放的心态，多参加社交活动，增加遇到合适对象的机会。</p>
+</div>
+
+<div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); padding: 25px; border-radius: 10px; margin: 30px 0; text-align: center;">
+<h3 style="color: #8b4513; margin-bottom: 15px;">想了解更多命理奥秘？</h3>
+<p style="color: #654321; margin-bottom: 20px;">Fortell365提供最专业的八字紫微斗数分析</p>
+<a href="/generate/bazi" style="background: #e67e22; color: white; padding: 12px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; display: inline-block; transition: all 0.3s ease;">立即生成专属八字报告</a>
+</div>
+
+<footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ecf0f1; text-align: center; color: #7f8c8d;">
+<p>© 2026 Fortell365 灵感命理 · 仅供娱乐参考</p>
+</footer>
+</article>
+</body>
+</html>
+EOF
+
+# 复制到public目录
+cp "seo_pages/$filename" "public/seo/"
+
+# 更新索引文件
+jq ".articles += [\"$filename\"]" seo_pages/index.json > seo_pages/index.json.tmp
+mv seo_pages/index.json.tmp seo_pages/index.json
+
+echo "✅ 生成: $filename"
+done
+
+# 生成完成统计
+total_files=$(ls seo_pages/*.html | wc -l)
+echo "📊 SEO文章生成完成: $total_files 篇"
+
+# 验证生成结果
+if [ $total_files -lt 30 ]; then
+echo "❌ 生成失败：只有 $total_files 篇文章，期望30篇"
+exit 1
+fi
+
+echo "🎉 所有SEO文章生成成功！"
+
+- name: Git operations
+run: |
+echo "🔄 开始Git操作..."
+
+# 配置Git用户信息
+git config --global user.name "Fortell365 SEO Bot"
+git config --global user.email "bot@fortell365.com"
+
+# 添加变更
+echo "📋 添加文件到Git..."
+git add public/seo/
+git add seo_pages/
+
+# 检查是否有变更
+if git diff --cached --quiet; then
+echo "ℹ️ 没有变更需要提交"
+exit 0
+fi
+
+echo "✅ 找到变更，开始提交..."
+
+# 生成提交信息
+current_time=$(date '+%Y-%m-%d %H:%M:%S')
+article_count=$(ls seo_pages/*.html | wc -l)
+
+git commit -m "🤖 Auto-generated SEO content - $article_count articles
+
+Generated on: $current_time
+Trigger: ${{ github.event_name }}
+Articles count: $article_count
+
+Files added:
+$(git diff --cached --name-only)"
+
+echo "📤 推送到GitHub..."
+git push origin ${{ github.ref_name }}
+
+echo "🎉 成功！推送完成"
+
+- name: Deployment summary
+run: |
+echo "📊 部署摘要"
+echo "仓库: ${{ github.repository }}"
+echo "分支: ${{ github.ref_name }}"
+echo "提交: ${{ github.sha }}"
+echo "文章数量: $(ls seo_pages/*.html | wc -l)"
+echo "GitHub URL: https://github.com/${{ github.repository }}/tree/${{ github.ref_name }}/public/seo"
+
+echo "✅ SEO内容生成和部署完成！"
