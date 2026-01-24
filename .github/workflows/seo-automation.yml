@@ -1,4 +1,4 @@
-name: Fortell365 SEO Generator
+name: SEO Generator
 
 on:
   schedule:
@@ -13,103 +13,35 @@ jobs:
     - uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-    - name: Create generator script
-      run: |
-        cat > generator.py << 'EOF'
-import json
-import os
-import random
-from datetime import datetime
-
-# 创建目录
-os.makedirs('public/seo', exist_ok=True)
-os.makedirs('seo_pages', exist_ok=True)
-
-class SimpleGenerator:
-    def __init__(self):
-        self.questions = [
-            '25岁还没谈过恋爱，八字是不是有啥问题',
-            '30年属兔女和什么属相的男生最适合',
-            '2025年桃花运怎么样什么时候能脱单',
-            '从八字看，我和恋人的缘分深吗',
-            '属龙的25岁女生，感情运势如何'
-        ]
-
-    def generate_html(self, question):
-        content = f'''
-        <h2>一、为什么关心这个问题</h2>
-        <p>{question}是很多人关心的话题。</p>
+    - run: |
+        echo "Starting SEO generation"
         
-        <h2>二、命理分析</h2>
-        <p>从八字紫微斗数的角度来看，每个人的感情运势都有其独特的规律。</p>
+        # Create directories
+        mkdir -p public/seo
+        mkdir -p seo_pages
         
-        <h2>三、实用建议</h2>
-        <p>基于命理分析，建议主动出击、提升自我、把握时机。</p>
-        '''
+        # Generate simple articles
+        echo "<h1>25岁还没谈过恋爱，八字是不是有啥问题？</h1>" > seo_pages/article1.html
+        echo "<h1>30年属兔女和什么属相的男生最适合？</h1>" >> seo_pages/article1.html
+        echo "<h1>2025年桃花运怎么样？什么时候能脱单？</h1>" >> seo_pages/article1.html
         
-        html = f'''<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{question} | Fortell365专业命理</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-</head>
-<body class="bg-slate-50">
-  <main class="max-w-4xl mx-auto px-4 py-8">
-    <article>
-      <div class="text-center mb-8">
-        <span class="inline-block px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm mb-4">八字命理 · 感情运势</span>
-        <h1 class="text-3xl md:text-4xl font-bold text-slate-900 mb-4 leading-tight">{question}？</h1>
-        <p class="text-slate-500">Fortell365 · 专业命理团队 · {datetime.now().strftime("%Y年%m月")}</p>
-      </div>
-      <div class="bg-white rounded-2xl p-8 shadow-sm">
-        {content}
-        <div class="bg-gradient-to-r from-purple-100 to-amber-100 rounded-xl p-6 mt-8 text-center">
-          <h3 class="text-xl font-bold text-slate-900 mb-2">想了解更多命理奥秘？</h3>
-          <p class="text-slate-600 mb-4">Fortell365提供专业的八字紫微斗数分析</p>
-          <a href="/generate/bazi" class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700">生成八字报告</a>
-        </div>
-      </div>
-    </article>
-  </main>
-</body>
-</html>'''
-        return html
-
-# 生成30篇文章
-generator = SimpleGenerator()
-files = []
-
-for i in range(30):
-    question = random.choice(generator.questions)
-    filename = f'seo-article-{i+1:02d}-{question.replace(" ", "-")}.html'
-    
-    html_content = generator.generate_html(question)
-    
-    with open(f'seo_pages/{filename}', 'w', encoding='utf-8') as f:
-        f.write(html_content)
-    
-    # 复制到public目录
-    with open(f'public/seo/{filename}', 'w', encoding='utf-8') as f:
-        f.write(html_content)
-    
-    files.append(filename)
-    print(f'Generated: {filename}')
-
-print(f'Generated {len(files)} articles successfully!')
-EOF
-
-    - name: Run generator
-      run: |
-        python3 generator.py
+        # Copy to public
+        cp seo_pages/article1.html public/seo/
         
-    - name: Deploy
-      run: |
-        git config --global user.name "Fortell365 Bot"
-        git config --global user.email "bot@fortell365.com"
+        # Generate more articles
+        for i in {2..30}; do
+          echo "<h1>SEO Article $i</h1><p>Fortell365专业命理分析</p>" > seo_pages/article$i.html
+          cp seo_pages/article$i.html public/seo/
+        done
+        
+        echo "Generated 30 articles"
+        ls seo_pages/
+        
+    - run: |
+        git config --global user.name "Bot"
+        git config --global user.email "bot@example.com"
         git add public/seo/ seo_pages/
-        git commit -m "SEO articles generated - $(date)" || echo "No changes"
+        git commit -m "SEO articles generated" || echo "No changes"
         git push origin main || echo "Push failed"
         
-        echo "🎉 Done! Generated articles: $(ls seo_pages/*.html 2>/dev/null | wc -l || echo 0)"
+        echo "✅ Complete! Generated $(ls seo_pages/*.html | wc -l) articles"
