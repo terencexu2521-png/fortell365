@@ -13,9 +13,9 @@ jobs:
     - uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-    - name: Generate SEO Content
+    - name: Create generator script
       run: |
-        python3 -c "
+        cat > generator.py << 'EOF'
 import json
 import os
 import random
@@ -25,80 +25,50 @@ from datetime import datetime
 os.makedirs('public/seo', exist_ok=True)
 os.makedirs('seo_pages', exist_ok=True)
 
-# 生成器类
-class SEOGenerator:
+class SimpleGenerator:
     def __init__(self):
-        self.templates = [
-            '我是{age}岁还没谈过恋爱，八字是不是有啥问题？',
-            '{age}年属{animal}女和什么属相的男生最适合？',
-            '2025年桃花运怎么样？什么时候能脱单？',
-            '从八字看，我和恋人的缘分深吗？',
-            '属{animal}的{age}岁女生，感情运势如何？',
-            '2026年桃花运怎么样？什么时候能脱单？',
-            '我和属{animal}的人八字合不合？在一起会幸福吗？',
-            '我是离异带孩，八字里还有没有再婚的缘分？',
-            '{age}岁本命年，感情方面会有什么变化？',
-            '我的八字显示{emotion}运什么时候来？'
+        self.questions = [
+            '25岁还没谈过恋爱，八字是不是有啥问题',
+            '30年属兔女和什么属相的男生最适合',
+            '2025年桃花运怎么样什么时候能脱单',
+            '从八字看，我和恋人的缘分深吗',
+            '属龙的25岁女生，感情运势如何'
         ]
-        self.ages = ['25', '28', '30', '32', '35', '38', '40']
-        self.animals = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
-        self.emotions = ['桃花', '正缘', '姻缘', '恋爱', '感情']
 
-    def generate_article(self, question):
+    def generate_html(self, question):
         content = f'''
         <h2>一、为什么关心这个问题</h2>
-        <p>{question}是很多人关心的话题。在当今社会，人们对感情和婚姻的关注度越来越高。</p>
+        <p>{question}是很多人关心的话题。</p>
         
         <h2>二、命理分析</h2>
-        <p>从八字紫微斗数的角度来看，每个人的感情运势都有其独特的规律和节奏。命理不是宿命论，而是一种指导和参考。</p>
+        <p>从八字紫微斗数的角度来看，每个人的感情运势都有其独特的规律。</p>
         
-        <h2>三、影响因素</h2>
-        <p>命理上的感情运势受多种因素影响：</p>
-        <ul>
-            <li>原生八字结构</li>
-            <li>大运流年</li>
-            <li>五行平衡</li>
-            <li>社交环境</li>
-        </ul>
-        
-        <h2>四、实用建议</h2>
-        <p>基于命理分析，以下是一些实用的建议：</p>
-        <ul>
-            <li>主动出击：扩大社交圈子，创造更多相识机会</li>
-            <li>提升自我：从内外在两方面提升个人魅力</li>
-            <li>时机把握：关注运势变化，在合适时机主动行动</li>
-            <li>心态调整：保持积极心态，相信缘分自然到来</li>
-        </ul>
-        
-        <h2>五、结语</h2>
-        <p>{question}这样的疑问很正常，说明您对感情生活有所期待。命理是一种文化传统和智慧传承。</p>
+        <h2>三、实用建议</h2>
+        <p>基于命理分析，建议主动出击、提升自我、把握时机。</p>
         '''
         
         html = f'''<!DOCTYPE html>
-<html lang=\"zh-CN\">
+<html lang="zh-CN">
 <head>
-  <meta charset=\"UTF-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{question} | Fortell365专业命理</title>
-  <meta name=\"description\" content=\"{question}专业命理分析，从八字紫微斗数角度解读感情运势。Fortell365提供专业命理指导。\">
-  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css\">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
 </head>
-<body class=\"bg-slate-50\">
-  <main class=\"max-w-4xl mx-auto px-4 py-8\">
+<body class="bg-slate-50">
+  <main class="max-w-4xl mx-auto px-4 py-8">
     <article>
-      <div class=\"text-center mb-8\">
-        <span class=\"inline-block px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm mb-4\">八字命理 · 感情运势</span>
-        <h1 class=\"text-3xl md:text-4xl font-bold text-slate-900 mb-4 leading-tight\">{question}</h1>
-        <p class=\"text-slate-500\">Fortell365 · 专业命理团队 · {datetime.now().strftime(\"%Y年%m月\")}</p>
+      <div class="text-center mb-8">
+        <span class="inline-block px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm mb-4">八字命理 · 感情运势</span>
+        <h1 class="text-3xl md:text-4xl font-bold text-slate-900 mb-4 leading-tight">{question}？</h1>
+        <p class="text-slate-500">Fortell365 · 专业命理团队 · {datetime.now().strftime("%Y年%m月")}</p>
       </div>
-      <div class=\"bg-white rounded-2xl p-8 shadow-sm\">
+      <div class="bg-white rounded-2xl p-8 shadow-sm">
         {content}
-        <div class=\"bg-gradient-to-r from-purple-100 to-amber-100 rounded-xl p-6 mt-8 text-center\">
-          <h3 class=\"text-xl font-bold text-slate-900 mb-2\">想了解更多命理奥秘？</h3>
-          <p class=\"text-slate-600 mb-4\">Fortell365提供专业的八字紫微斗数分析</p>
-          <a href=\"/generate/bazi\" class=\"inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700\">
-            生成八字报告
-          </a>
+        <div class="bg-gradient-to-r from-purple-100 to-amber-100 rounded-xl p-6 mt-8 text-center">
+          <h3 class="text-xl font-bold text-slate-900 mb-2">想了解更多命理奥秘？</h3>
+          <p class="text-slate-600 mb-4">Fortell365提供专业的八字紫微斗数分析</p>
+          <a href="/generate/bazi" class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700">生成八字报告</a>
         </div>
       </div>
     </article>
@@ -107,58 +77,39 @@ class SEOGenerator:
 </html>'''
         return html
 
-    def generate_all(self):
-        generator = SEOGenerator()
-        articles = []
+# 生成30篇文章
+generator = SimpleGenerator()
+files = []
+
+for i in range(30):
+    question = random.choice(generator.questions)
+    filename = f'seo-article-{i+1:02d}-{question.replace(" ", "-")}.html'
+    
+    html_content = generator.generate_html(question)
+    
+    with open(f'seo_pages/{filename}', 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    # 复制到public目录
+    with open(f'public/seo/{filename}', 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    files.append(filename)
+    print(f'Generated: {filename}')
+
+print(f'Generated {len(files)} articles successfully!')
+EOF
+
+    - name: Run generator
+      run: |
+        python3 generator.py
         
-        for i in range(30):
-            template = random.choice(generator.templates)
-            question = template.format(
-                age=random.choice(generator.ages),
-                animal=random.choice(generator.animals),
-                emotion=random.choice(generator.emotions)
-            )
-            
-            filename = f'seo-{question.replace(\"？\", \"\").replace(\"？\", \"\").replace(\"我\", \"\").replace(\"的\", \"\").replace(\"是\", \"\").replace(\"属\", \"\").replace(\"和\", \"\").replace(\"什么\", \"\").replace(\"合不合\", \"\").replace(\"在一起\", \"\").replace(\"在一起会幸福吗\", \"\").replace(\"是不是\", \"\").replace(\"有没有\", \"\").replace(\"怎么样\", \"\").replace(\"什么时候\", \"\").replace(\"脱单\", \"\").replace(\"有什么变化\", \"\").replace(\"运势\", \"\").replace(\"如何\", \"\").replace(\"何时\", \"\").replace(\"什么\", \"\").replace(\" \", \"\")[:30]}.html'
-            
-            html_content = generator.generate_article(question)
-            
-            with open(f'seo_pages/{filename}', 'w', encoding='utf-8') as f:
-                f.write(html_content)
-            
-            articles.append({
-                'filename': filename,
-                'title': f'{question} | Fortell365专业命理',
-                'question': question
-            })
-        
-        with open('seo_pages/index.json', 'w', encoding='utf-8') as f:
-            json.dump(articles, f, ensure_ascii=False, indent=2)
-        
-        print(f'🎉 Generated {len(articles)} SEO articles')
-        return articles
-
-# 执行生成
-generator = SEOGenerator()
-articles = generator.generate_all()
-
-# 复制到部署目录
-import shutil
-for article in articles:
-    shutil.copy(f'seo_pages/{article[\"filename\"]}', 'public/seo/')
-
-print('✅ Fortell365 SEO generation completed!')
-print(f'📊 Generated {len(articles)} professional articles')
-print('📁 Files: seo_pages/ and public/seo/')
-        "
-
-    - name: Deploy Content
+    - name: Deploy
       run: |
         git config --global user.name "Fortell365 Bot"
         git config --global user.email "bot@fortell365.com"
         git add public/seo/ seo_pages/
-        git commit -m "🤖 Auto SEO content - $(date +'%Y-%m-%d %H:%M')" || echo "No changes"
-        git push origin main || echo "Push failed (normal if no permissions)"
+        git commit -m "SEO articles generated - $(date)" || echo "No changes"
+        git push origin main || echo "Push failed"
         
-        echo "🎉 Deployment complete!"
-        echo "📊 Articles: $(ls seo_pages/*.html 2>/dev/null | wc -l || echo 0)"
+        echo "🎉 Done! Generated articles: $(ls seo_pages/*.html 2>/dev/null | wc -l || echo 0)"
