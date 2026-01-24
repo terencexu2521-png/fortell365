@@ -1,47 +1,92 @@
-name: SEO Generator
+name: Fortell365 SEO 自动化
+
+# 添加权限配置，确保有写入权限
+permissions:
+  contents: write
 
 on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
+    inputs:
+      count:
+        description: '生成文章数量'
+        required: false
+        default: '30'
+        type: string
 
 jobs:
-  generate:
+  generate-content:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-    - run: |
-        echo "Starting SEO generation"
-        
-        # Create directories
+    - name: 生成SEO内容
+      run: |
         mkdir -p public/seo
-        mkdir -p seo_pages
+        pip install requests
+        cat > generate_seo_content.py << 'EOF'
+import random
+import os
+from datetime import datetime
+
+# 生成测试SEO页面
+questions = [
+    "2025年桃花运势如何？",
+    "25岁没谈过恋爱怎么办？",
+    "属鸡和属兔的配对分析",
+    "八字显示的最佳脱单时机",
+    "30岁本命年感情运势"
+]
+
+for i, question in enumerate(questions, 1):
+    filename = f"seo-test-{i}.html"
+    content = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>{question} | Fortell365</title>
+    <meta name="description" content="{question}专业命理分析">
+</head>
+<body style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+    <header style="background: #7c3aed; color: white; padding: 20px; text-align: center; border-radius: 8px;">
+        <h1>Fortell365 专业命理</h1>
+    </header>
+    <main style="background: white; padding: 30px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <h2 style="color: #1e293b;">{question}</h2>
+        <p style="line-height: 1.6; color: #64748b;">
+            从命理角度来看，这是一个值得关注的话题。每个人的感情运势都有其独特的规律和节奏。
+        </p>
+        <p style="line-height: 1.6; color: #64748b;">
+            基于您的八字分析，建议您保持积极心态，相信缘分自然到来。
+        </p>
+        <div style="background: linear-gradient(135deg, #f5f3ff 0%, #fef3c7 100%); padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #1e293b; margin-bottom: 10px;">想了解更多命理奥秘？</h3>
+            <p style="color: #64748b; margin-bottom: 15px;">Fortell365提供专业的八字紫微斗数分析</p>
+            <a href="/generate/bazi" style="background: #7c3aed; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">生成八字报告</a>
+        </div>
+    </main>
+    <footer style="text-align: center; padding: 20px; color: #64748b; border-top: 1px solid #e2e8f0;">
+        <p>2026 Fortell365 灵感命理 · 仅供娱乐参考</p>
+    </footer>
+</body>
+</html>"""
+    
+    with open(f"public/seo/{filename}", 'w', encoding='utf-8') as f:
+        f.write(content)
+    print(f"生成: {filename}")
+
+print("✅ SEO内容生成完成！")
+        EOF
         
-        # Generate simple articles
-        echo "<h1>25岁还没谈过恋爱，八字是不是有啥问题？</h1>" > seo_pages/article1.html
-        echo "<h1>30年属兔女和什么属相的男生最适合？</h1>" >> seo_pages/article1.html
-        echo "<h1>2025年桃花运怎么样？什么时候能脱单？</h1>" >> seo_pages/article1.html
+        python generate_seo_content.py
         
-        # Copy to public
-        cp seo_pages/article1.html public/seo/
-        
-        # Generate more articles
-        for i in {2..30}; do
-          echo "<h1>SEO Article $i</h1><p>Fortell365专业命理分析</p>" > seo_pages/article$i.html
-          cp seo_pages/article$i.html public/seo/
-        done
-        
-        echo "Generated 30 articles"
-        ls seo_pages/
-        
-    - run: |
-        git config --global user.name "Bot"
-        git config --global user.email "bot@example.com"
-        git add public/seo/ seo_pages/
-        git commit -m "SEO articles generated" || echo "No changes"
-        git push origin main || echo "Push failed"
-        
-        echo "✅ Complete! Generated $(ls seo_pages/*.html | wc -l) articles"
+    - name: 提交变更
+      run: |
+        git config user.name "Fortell365 Bot"
+        git config user.email "bot@fortell365.com"
+        git add public/seo/
+        git commit -m "🤖 自动生成SEO测试内容 - $(date)"
+        git push origin main
