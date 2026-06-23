@@ -1,104 +1,127 @@
 import { useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { Sparkles, Loader2, ArrowLeft, HelpCircle } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { Sparkles, Loader2, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const fortuneConfig: Record<string, { name: string; needsBirth: boolean; needsQuestion: boolean; isTarot: boolean; price: number }> = {
-  bazi: { name: '八字命理', needsBirth: true, needsQuestion: false, isTarot: false, price: 3990 },
-  ziwei: { name: '紫微斗数', needsBirth: true, needsQuestion: false, isTarot: false, price: 3990 },
-  tarot: { name: '塔罗占卜', needsBirth: false, needsQuestion: true, isTarot: true, price: 990 },
-  jiugong: { name: '九宫命理', needsBirth: true, needsQuestion: true, isTarot: false, price: 990 },
-}
+// 天干和地支选项
+const TIAN_GAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
+const DI_ZHI = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
 
-const timeOptions = [
-  { value: '', label: '不确定' },
-  { value: '子时', label: '子时 (23:00-01:00)' },
-  { value: '丑时', label: '丑时 (01:00-03:00)' },
-  { value: '寅时', label: '寅时 (03:00-05:00)' },
-  { value: '卯时', label: '卯时 (05:00-07:00)' },
-  { value: '辰时', label: '辰时 (07:00-09:00)' },
-  { value: '巳时', label: '巳时 (09:00-11:00)' },
-  { value: '午时', label: '午时 (11:00-13:00)' },
-  { value: '未时', label: '未时 (13:00-15:00)' },
-  { value: '申时', label: '申时 (15:00-17:00)' },
-  { value: '酉时', label: '酉时 (17:00-19:00)' },
-  { value: '戌时', label: '戌时 (19:00-21:00)' },
-  { value: '亥时', label: '亥时 (21:00-23:00)' },
-]
+const SUPABASE_URL = 'https://rkqutqsdnlbuhgvondrh.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrcXV0cXNkbmxidWhndm9uZHJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0MzE0NDQsImV4cCI6MjA4MzAwNzQ0NH0._-Jn-WxsSwauwhxhg35Z1B3Im_VxAMSQ4YBvEic3QWM'
 
-const tarotExamples = [
-  { category: '感情', examples: ['正在暧昧期，不确定对方心意', '刚分手想知道是否能复合', '已婚但感情遇到问题'] },
-  { category: '事业', examples: ['考虑跳槽但不确定时机', '想创业但有顾虑', '升职机会该不该争取'] },
-  { category: '财运', examples: ['投资决策需要指引', '副业是否值得投入', '债务问题如何解决'] },
-]
+// 四柱名称
+const PILLARS = [
+  { key: 'year', label: '年柱', hint: '如甲子' },
+  { key: 'month', label: '月柱', hint: '如丙寅' },
+  { key: 'day', label: '日柱', hint: '如戊辰' },
+  { key: 'hour', label: '时柱', hint: '如壬戌' },
+] as const
+
+type PillarKey = typeof PILLARS[number]['key']
+type FormData = Record<PillarKey, { gan: string; zhi: string }>
 
 export default function GeneratePage() {
-  const { type } = useParams<{ type: string }>()
   const navigate = useNavigate()
-  const config = fortuneConfig[type || 'bazi']
-
   const [step, setStep] = useState<'input' | 'loading'>('input')
-  const [showExamples, setShowExamples] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    birthDate: '',
-    birthTime: '',
-    gender: '',
-    question: '',
-    background: ''
+  const [name, setName] = useState('')
+  const [gender, setGender] = useState('')
+  const [pillars, setPillars] = useState<FormData>({
+    year: { gan: '', zhi: '' },
+    month: { gan: '', zhi: '' },
+    day: { gan: '', zhi: '' },
+    hour: { gan: '', zhi: '' },
   })
 
+  // 更新四柱
+  const updatePillar = (pillar: PillarKey, field: 'gan' | 'zhi', value: string) => {
+    setPillars((prev) => ({
+      ...prev,
+      [pillar]: { ...prev[pillar], [field]: value },
+    }))
+  }
+
+  // 校验所有八字是否填写完整
+  const isBaziComplete = () => {
+    return Object.values(pillars).every((p) => p.gan && p.zhi)
+  }
+
+  // 将四柱拼接为字符串
+  const buildBaziString = () => {
+    return PILLARS.map((p) => `${pillars[p.key].gan}${pillars[p.key].zhi}`).join(' ')
+  }
+
   const handleSubmit = async () => {
-    if (!formData.name.trim()) {
+    if (!name.trim()) {
       toast.error('请填写您的姓名或昵称')
       return
     }
-    if (config.needsBirth && !formData.birthDate) {
-      toast.error('请填写出生日期')
+    if (!gender) {
+      toast.error('请选择性别')
       return
     }
-    if (config.needsQuestion && !formData.question) {
-      toast.error('请输入您的核心问题')
+    if (!isBaziComplete()) {
+      toast.error('请完整填写四柱八字（每个柱选天干+地支）')
       return
     }
 
     setStep('loading')
 
     try {
-      const response = await fetch('https://rkqutqsdnlbuhgvondrh.supabase.co/functions/v1/generate-fortune', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrcXV0cXNkbmxidWhndm9uZHJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0MzE0NDQsImV4cCI6MjA4MzAwNzQ0NH0._-Jn-WxsSwauwhxhg35Z1B3Im_VxAMSQ4YBvEic3QWM'
-        },
-        body: JSON.stringify({
-          fortuneType: type,
-          productType: config.needsBirth ? 'main' : 'instant',
-          ...formData
-        })
-      })
+      // 构建请求体
+      const body = {
+        fortuneType: 'bazi',
+        productType: 'main',
+        name: name.trim(),
+        gender,
+        baziString: buildBaziString(),
+        pillars,
+      }
 
-      if (!response.ok) throw new Error('生成失败')
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/generate-fortune`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify(body),
+        }
+      )
+
+      if (!response.ok) {
+        const errText = await response.text()
+        console.error('API error:', response.status, errText)
+        throw new Error(`生成失败 (${response.status})`)
+      }
+
       const data = await response.json()
       const reportId = data?.data?.reportId
 
       if (reportId) {
-        localStorage.setItem(`report_${reportId}`, JSON.stringify({
-          ...data.data,
-          type,
-          formData,
-          timestamp: Date.now()
-        }))
+        // 缓存报告数据到 localStorage
+        localStorage.setItem(
+          `report_${reportId}`,
+          JSON.stringify({
+            ...data.data,
+            fortuneType: 'bazi',
+            formData: { name: name.trim(), gender, baziString: buildBaziString() },
+            timestamp: Date.now(),
+          })
+        )
         navigate(`/report/${reportId}`)
       } else {
-        throw new Error('生成失败')
+        throw new Error('生成失败：未获取到报告ID')
       }
     } catch (err: any) {
+      console.error('Submit error:', err)
       toast.error(err.message || '生成失败，请重试')
       setStep('input')
     }
   }
 
+  // 加载页面
   if (step === 'loading') {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
@@ -109,11 +132,15 @@ export default function GeneratePage() {
               <Sparkles className="w-6 h-6 text-purple-600 animate-spin" />
             </div>
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">AI 正在解析</h2>
-          <p className="text-slate-500 text-sm">请稍候，正在生成专属报告...</p>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">
+            AI 正在解析你的八字
+          </h2>
+          <p className="text-slate-500 text-sm">
+            正在分析五行格局、十神天赋、大运走势...
+          </p>
           <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-400">
             <Loader2 className="w-3 h-3 animate-spin" />
-            {config.isTarot ? '抽牌解读中...' : '排盘计算中...'}
+            命理分析中...
           </div>
         </div>
       </div>
@@ -128,159 +155,135 @@ export default function GeneratePage() {
           <Link to="/" className="p-2 -ml-2 text-slate-500 hover:text-slate-700">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="text-lg font-semibold text-slate-900">{config.name}</h1>
+          <h1 className="text-lg font-semibold text-slate-900">八字专业职业解读</h1>
         </div>
       </header>
 
       {/* Form */}
       <div className="max-w-xl mx-auto px-4 py-6">
+        {/* 使用说明 */}
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-5">
+          <p className="text-sm text-indigo-700 leading-relaxed">
+            <strong>📋 需要先有八字？</strong> 去「小巫排盘」或其他八字 App
+            输入你的出生年月日时，获取<strong>四柱八字</strong>（年柱、月柱、日柱、时柱，每柱各一个天干+地支），然后填到下方表单即可。
+          </p>
+        </div>
+
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <p className="text-slate-500 text-sm mb-5">请填写测算所需信息</p>
+          <p className="text-slate-500 text-sm mb-5">
+            请填写你的八字信息（不需要出生日期，直接填八字即可）
+          </p>
 
           <div className="space-y-4">
-            {/* 姓名 - 所有类型都需要 */}
+            {/* 姓名 */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">姓名/昵称 *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                姓名/昵称 *
+              </label>
               <input
                 type="text"
                 placeholder="如何称呼您"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="w-full h-12 px-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none"
               />
             </div>
 
-            {config.needsBirth && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">出生日期 *</label>
-                  <input
-                    type="date"
-                    value={formData.birthDate}
-                    onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                    className="w-full h-12 px-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">出生时辰</label>
-                  <select
-                    value={formData.birthTime}
-                    onChange={(e) => setFormData({ ...formData, birthTime: e.target.value })}
-                    className="w-full h-12 px-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none bg-white"
+            {/* 性别 */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                性别 *
+              </label>
+              <div className="flex gap-3">
+                {[
+                  { value: 'male', label: '男' },
+                  { value: 'female', label: '女' },
+                ].map((g) => (
+                  <button
+                    key={g.value}
+                    type="button"
+                    onClick={() => setGender(g.value)}
+                    className={`flex-1 h-12 rounded-xl border transition ${
+                      gender === g.value
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
                   >
-                    {timeOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">性别</label>
-                  <div className="flex gap-3">
-                    {['male', 'female'].map((g) => (
-                      <button
-                        key={g}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, gender: g })}
-                        className={`flex-1 h-12 rounded-xl border transition ${
-                          formData.gender === g
-                            ? 'border-purple-500 bg-purple-50 text-purple-700'
-                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        {g === 'male' ? '男' : '女'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* 塔罗占卜特殊表单 */}
-            {config.isTarot && (
-              <>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-slate-700">核心问题 *</label>
-                    <button 
-                      type="button"
-                      onClick={() => setShowExamples(!showExamples)}
-                      className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700"
-                    >
-                      <HelpCircle className="w-3.5 h-3.5" />
-                      {showExamples ? '收起示例' : '查看示例'}
-                    </button>
-                  </div>
-                  <textarea
-                    placeholder="例如：我和他/她现在是暧昧关系，想知道能否发展成正式恋人..."
-                    value={formData.question}
-                    onChange={(e) => setFormData({ ...formData, question: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none resize-none"
-                  />
-                  
-                  {showExamples && (
-                    <div className="mt-3 p-3 bg-slate-50 rounded-lg">
-                      <p className="text-xs text-slate-500 mb-2">问题示例（点击可快速填入）：</p>
-                      {tarotExamples.map((cat) => (
-                        <div key={cat.category} className="mb-2">
-                          <span className="text-xs font-medium text-slate-600">{cat.category}：</span>
-                          <div className="flex flex-wrap gap-1.5 mt-1">
-                            {cat.examples.map((ex, i) => (
-                              <button
-                                key={i}
-                                type="button"
-                                onClick={() => setFormData({ ...formData, question: ex })}
-                                className="text-xs px-2 py-1 bg-white border border-slate-200 rounded-full hover:border-purple-300 hover:text-purple-600 transition"
-                              >
-                                {ex}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">当前事件背景</label>
-                  <textarea
-                    placeholder="补充说明当前的具体情况，帮助更精准解读（选填）&#10;例如：认识3个月，对方最近联系变少了..."
-                    value={formData.background}
-                    onChange={(e) => setFormData({ ...formData, background: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none resize-none"
-                  />
-                </div>
-              </>
-            )}
-
-            {/* 非塔罗的问题输入 */}
-            {config.needsQuestion && !config.isTarot && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">想问的问题</label>
-                <textarea
-                  placeholder="请描述您想要咨询的问题..."
-                  value={formData.question}
-                  onChange={(e) => setFormData({ ...formData, question: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none resize-none"
-                />
+                    {g.label}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
+
+            {/* 四柱八字 */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                四柱八字 *
+              </label>
+              <div className="space-y-3">
+                {PILLARS.map((pillar) => (
+                  <div
+                    key={pillar.key}
+                    className="flex items-center gap-2 bg-slate-50 rounded-xl p-3"
+                  >
+                    {/* 柱名标签 */}
+                    <div className="w-14 shrink-0 text-center">
+                      <div className="text-sm font-semibold text-slate-700">
+                        {pillar.label}
+                      </div>
+                      <div className="text-xs text-slate-400">{pillar.hint}</div>
+                    </div>
+
+                    {/* 天干下拉 */}
+                    <select
+                      value={pillars[pillar.key].gan}
+                      onChange={(e) =>
+                        updatePillar(pillar.key, 'gan', e.target.value)
+                      }
+                      className="flex-1 h-10 px-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none bg-white"
+                    >
+                      <option value="">天干</option>
+                      {TIAN_GAN.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* 地支下拉 */}
+                    <select
+                      value={pillars[pillar.key].zhi}
+                      onChange={(e) =>
+                        updatePillar(pillar.key, 'zhi', e.target.value)
+                      }
+                      className="flex-1 h-10 px-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none bg-white"
+                    >
+                      <option value="">地支</option>
+                      {DI_ZHI.map((z) => (
+                        <option key={z} value={z}>
+                          {z}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
+          {/* 提交按钮 */}
           <button
             onClick={handleSubmit}
-            className="w-full mt-6 h-14 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold text-lg hover:opacity-90 transition"
+            disabled={!isBaziComplete() || !name.trim() || !gender}
+            className="w-full mt-6 h-14 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold text-lg hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            免费生成预览报告
+            免费查看命理画像
           </button>
 
           <p className="text-center text-xs text-slate-400 mt-4">
-            免费生成预览报告，了解核心趋势
+            免费查看性格分析、人生节律、先天优势
+            <br />
+            专业推荐 & 职业规划 ¥39.90 解锁完整版
           </p>
         </div>
       </div>
