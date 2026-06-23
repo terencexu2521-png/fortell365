@@ -5,10 +5,6 @@
   "installCommand": "npm install",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
       "source": "/assets/(.*)",
       "destination": "/assets/$1"
     },
@@ -17,12 +13,6 @@
       "destination": "/index.html"
     }
   ],
-  "functions": {
-    "api/generate-fortune.mjs": {
-      "memory": 1024,
-      "maxDuration": 30
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",
