@@ -179,6 +179,18 @@ ${dizhiRels}
 5. ⚠️ 只输出模块一至四，不输出付费层内容`
 }
 
+// Parse JSON body (Vercel Node.js runtime doesn't auto-parse)
+function parseBody(req) {
+  return new Promise((resolve) => {
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', () => {
+      try { resolve(JSON.parse(body)) }
+      catch { resolve({}) }
+    })
+  })
+}
+
 // ===================== Request Handler =====================
 export default async function handler(req, res) {
   // CORS
@@ -190,7 +202,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
 
   try {
-    const input = req.body
+    const input = await parseBody(req)
     const pillars = parsePillars(input)
     if (pillars.length !== 4) {
       return res.status(400).json({ error: '请提供完整的八字四柱（年柱、月柱、日柱、时柱）' })
