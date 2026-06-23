@@ -3,9 +3,6 @@ import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { Lock, ArrowLeft, Loader2, Share2, CheckCircle, X, Bell, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const SUPABASE_URL = 'https://rkqutqsdnlbuhgvondrh.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrcXV0cXNkbmxidWhndm9uZHJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0MzE0NDQsImV4cCI6MjA4MzAwNzQ0NH0._-Jn-WxsSwauwhxhg35Z1B3Im_VxAMSQ4YBvEic3QWM'
-
 const PRICE = 3990 // ¥39.90
 
 interface ReportData {
@@ -28,7 +25,7 @@ export default function ReportPage() {
   const [contactSubmitted, setContactSubmitted] = useState(false)
 
   useEffect(() => {
-    const loadReport = async () => {
+    const loadReport = () => {
       if (!id) return
 
       const isPaidParam = searchParams.get('paid') === '1'
@@ -37,44 +34,22 @@ export default function ReportPage() {
 
       if (isPaidParam || isMockPay || isTestUnlock) {
         toast.success('解锁成功！正在加载完整报告...')
-        localStorage.removeItem(`report_${id}`)
-
-        try {
-          await fetch(`${SUPABASE_URL}/rest/v1/fortune_reports?id=eq.${id}`, {
-            method: 'PATCH',
-            headers: {
-              apikey: SUPABASE_ANON_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ is_paid: true }),
-          })
-        } catch (err) {
-          console.error('Failed to update status')
+        const cached = localStorage.getItem(`report_${id}`)
+        if (cached) {
+          try {
+            const data = JSON.parse(cached)
+            data.isPaid = true
+            localStorage.setItem(`report_${id}`, JSON.stringify(data))
+          } catch {}
         }
       }
 
-      try {
-        const response = await fetch(
-          `${SUPABASE_URL}/rest/v1/fortune_reports?id=eq.${id}&select=*`,
-          { headers: { apikey: SUPABASE_ANON_KEY } }
-        )
-        const data = await response.json()
-        if (data?.[0]) {
-          setReport({
-            reportId: data[0].id,
-            freeContent: data[0].free_content,
-            paidContent: data[0].paid_content,
-            price: PRICE,
-            fortuneType: 'bazi',
-            isPaid: data[0].is_paid,
-          })
-        }
-      } catch (err) {
-        console.error('Failed to load report')
-        // fallback to localStorage cache
-        const cached = localStorage.getItem(`report_${id}`)
-        if (cached) {
+      const cached = localStorage.getItem(`report_${id}`)
+      if (cached) {
+        try {
           setReport(JSON.parse(cached))
+        } catch {
+          console.error('Failed to parse cached report')
         }
       }
       setLoading(false)
@@ -85,25 +60,8 @@ export default function ReportPage() {
 
   // 记录付费意愿点击
   const recordPaymentIntent = async () => {
-    if (!report) return
-
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/payment_intent_clicks`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({
-          fortune_type: 'bazi',
-          report_type: 'main_report',
-          page_source: 'report_page',
-          is_logged_in: false,
-          price: PRICE,
-          report_id: report.reportId,
-          user_agent: navigator.userAgent,
-        }),
+    console.log('Payment intent:', report?.reportId)
+  }),
       })
     } catch (err) {
       console.error('Failed to record click')
@@ -112,30 +70,9 @@ export default function ReportPage() {
 
   // 提交联系方式
   const submitContact = async () => {
-    if (!contactInput.trim() || !report) return
-
-    const isEmail = contactInput.includes('@')
-
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/payment_intent_clicks`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({
-          fortune_type: 'bazi',
-          report_type: 'contact_submit',
-          page_source: 'report_page',
-          is_logged_in: false,
-          price: PRICE,
-          report_id: report.reportId,
-          contact_type: isEmail ? 'email' : 'wechat',
-          contact_value: contactInput.trim(),
-          user_agent: navigator.userAgent,
-        }),
-      })
+    setContactSubmitted(true)
+    toast.success('已记录，开放后将第一时间通知您')
+  })
       setContactSubmitted(true)
       toast.success('已记录，开放后将第一时间通知您')
     } catch (err) {

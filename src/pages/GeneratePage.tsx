@@ -7,8 +7,7 @@ import toast from 'react-hot-toast'
 const TIAN_GAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
 const DI_ZHI = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
 
-const SUPABASE_URL = 'https://rkqutqsdnlbuhgvondrh.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrcXV0cXNkbmxidWhndm9uZHJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0MzE0NDQsImV4cCI6MjA4MzAwNzQ0NH0._-Jn-WxsSwauwhxhg35Z1B3Im_VxAMSQ4YBvEic3QWM'
+const API_URL = '/api/generate-fortune'
 
 // 四柱名称
 const PILLARS = [
@@ -78,17 +77,11 @@ export default function GeneratePage() {
         pillars,
       }
 
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/generate-fortune`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify(body),
-        }
-      )
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
 
       if (!response.ok) {
         const errText = await response.text()
