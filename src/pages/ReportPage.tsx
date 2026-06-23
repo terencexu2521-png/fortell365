@@ -3,6 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { Lock, ArrowLeft, Loader2, Share2, CheckCircle, X, Bell, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+
 const PRICE = 3990 // ¥39.90
 
 interface ReportData {
@@ -27,12 +28,8 @@ export default function ReportPage() {
   useEffect(() => {
     const loadReport = () => {
       if (!id) return
-
       const isPaidParam = searchParams.get('paid') === '1'
-      const isMockPay = searchParams.get('mock_pay') === '1'
-      const isTestUnlock = searchParams.get('test_unlock') === '1'
-
-      if (isPaidParam || isMockPay || isTestUnlock) {
+      if (isPaidParam) {
         toast.success('解锁成功！正在加载完整报告...')
         const cached = localStorage.getItem(`report_${id}`)
         if (cached) {
@@ -43,41 +40,25 @@ export default function ReportPage() {
           } catch {}
         }
       }
-
       const cached = localStorage.getItem(`report_${id}`)
       if (cached) {
-        try {
-          setReport(JSON.parse(cached))
-        } catch {
-          console.error('Failed to parse cached report')
-        }
+        try { setReport(JSON.parse(cached)) }
+        catch { console.error('Failed to parse cached report') }
       }
       setLoading(false)
     }
-
     loadReport()
   }, [id, searchParams])
 
   // 记录付费意愿点击
-  const recordPaymentIntent = async () => {
+  const recordPaymentIntent = () => {
     console.log('Payment intent:', report?.reportId)
-  }),
-      })
-    } catch (err) {
-      console.error('Failed to record click')
-    }
   }
 
   // 提交联系方式
-  const submitContact = async () => {
+  const submitContact = () => {
     setContactSubmitted(true)
     toast.success('已记录，开放后将第一时间通知您')
-  })
-      setContactSubmitted(true)
-      toast.success('已记录，开放后将第一时间通知您')
-    } catch (err) {
-      toast.error('提交失败，请重试')
-    }
   }
 
   // 点击解锁按钮
