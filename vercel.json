@@ -18,7 +18,7 @@
     }
   ],
   "functions": {
-    "api/generate-fortune.js": {
+    "api/generate-fortune.mjs": {
       "memory": 1024,
       "maxDuration": 30
     }
