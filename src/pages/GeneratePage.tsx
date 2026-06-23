@@ -97,7 +97,8 @@ export default function GeneratePage() {
         localStorage.setItem(
           `report_${reportId}`,
           JSON.stringify({
-            ...data.data,
+            fullContent: data.data.fullContent || data.data.freeContent || '',
+            reportId,
             fortuneType: 'bazi',
             formData: { name: name.trim(), gender, baziString: buildBaziString() },
             timestamp: Date.now(),
@@ -270,13 +271,13 @@ export default function GeneratePage() {
             disabled={!isBaziComplete() || !name.trim() || !gender}
             className="w-full mt-6 h-14 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold text-lg hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            免费查看命理画像
+            免费生成完整报告
           </button>
 
           <p className="text-center text-xs text-slate-400 mt-4">
-            免费查看性格分析、人生节律、先天优势
+            限时免费查看完整八字专业职业解读
             <br />
-            专业推荐 & 职业规划 ¥39.90 解锁完整版
+            包含：命盘分析 · 性格DNA · 大运回顾 · 专业推荐 · 职业规划 ¥9.90
           </p>
         </div>
       </div>

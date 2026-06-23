@@ -1,18 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { Lock, ArrowLeft, Loader2, Share2, CheckCircle, X, Bell, Mail } from 'lucide-react'
+import { ArrowLeft, Loader2, Share2, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-
-const PRICE = 3990 // ¥39.90
+const PRICE = 990 // ¥9.90
 
 interface ReportData {
   reportId: string
-  freeContent: string
-  paidContent?: string
+  fullContent: string
   price: number
   fortuneType: string
-  isPaid?: boolean
   formData?: { name: string; gender: string; baziString: string }
 }
 
@@ -21,50 +18,60 @@ export default function ReportPage() {
   const [searchParams] = useSearchParams()
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showBetaModal, setShowBetaModal] = useState(false)
-  const [contactInput, setContactInput] = useState('')
-  const [contactSubmitted, setContactSubmitted] = useState(false)
+  // 微信号 + 限时免费状态
+  const [wechatId, setWechatId] = useState('')
+  const [wechatSubmitted, setWechatSubmitted] = useState(false)
+  const [viewingFull, setViewingFull] = useState(false)
+  // 只展示前1000字作为预览，提交微信号后看完整
+  const PREVIEW_LEN = 1000
 
   useEffect(() => {
     const loadReport = () => {
       if (!id) return
-      const isPaidParam = searchParams.get('paid') === '1'
-      if (isPaidParam) {
-        toast.success('解锁成功！正在加载完整报告...')
-        const cached = localStorage.getItem(`report_${id}`)
-        if (cached) {
-          try {
-            const data = JSON.parse(cached)
-            data.isPaid = true
-            localStorage.setItem(`report_${id}`, JSON.stringify(data))
-          } catch {}
-        }
-      }
       const cached = localStorage.getItem(`report_${id}`)
       if (cached) {
-        try { setReport(JSON.parse(cached)) }
-        catch { console.error('Failed to parse cached report') }
+        try {
+          const data = JSON.parse(cached)
+          setReport(data)
+          // 如果之前提交过微信号，恢复状态
+          if (data.wechatId) {
+            setWechatId(data.wechatId)
+            setWechatSubmitted(true)
+            setViewingFull(true)
+          }
+        } catch {
+          console.error('Failed to parse cached report')
+        }
       }
       setLoading(false)
     }
     loadReport()
   }, [id, searchParams])
 
-  // 记录付费意愿点击
-  const recordPaymentIntent = () => {
-    console.log('Payment intent:', report?.reportId)
+  // 提交微信号解锁完整报告
+  const submitWechat = () => {
+    const trimmed = wechatId.trim()
+    if (!trimmed) {
+      toast.error('请输入您的微信号')
+      return
+    }
+    setWechatSubmitted(true)
+    setViewingFull(true)
+
+    // 保存到 localStorage 持久化
+    if (report) {
+      const updated = { ...report, wechatId: trimmed }
+      localStorage.setItem(`report_${id}`, JSON.stringify(updated))
+      setReport(updated)
+    }
+    toast.success('已解锁完整报告！')
   }
 
-  // 提交联系方式
-  const submitContact = () => {
-    setContactSubmitted(true)
-    toast.success('已记录，开放后将第一时间通知您')
-  }
-
-  // 点击解锁按钮
-  const handleUnlockClick = async () => {
-    await recordPaymentIntent()
-    setShowBetaModal(true)
+  // 获取显示内容：已提交微信号→全部，否则→前半部分预览
+  const getDisplayContent = () => {
+    if (!report?.fullContent) return ''
+    if (viewingFull) return report.fullContent
+    return report.fullContent.substring(0, PREVIEW_LEN) + '\n\n> *…以上为预览内容，留下微信号可解锁完整八字专业职业解读（限时免费）*'
   }
 
   if (loading) {
@@ -88,18 +95,23 @@ export default function ReportPage() {
     )
   }
 
-  const displayContent = report.isPaid ? report.paidContent : report.freeContent
+  const displayContent = getDisplayContent()
 
-  // Markdown 渲染器（保留原有逻辑，支持标题、列表、加粗等）
+  // Markdown 渲染器
   const renderContent = (content: string | undefined) => {
     if (!content) return null
     return content.split('\n').map((line, i) => {
+      // 处理引用
+      if (line.startsWith('> ')) {
+        return (
+          <blockquote key={i} className="border-l-4 border-amber-400 bg-amber-50 px-3 py-1 my-2 text-sm text-slate-500 italic">
+            {line.replace('> ', '').replace(/\*/g, '')}
+          </blockquote>
+        )
+      }
       if (line.startsWith('## ')) {
         return (
-          <h2
-            key={i}
-            className="text-xl font-bold text-slate-900 mt-6 mb-3 first:mt-0 border-l-4 border-purple-500 pl-3"
-          >
+          <h2 key={i} className="text-xl font-bold text-slate-900 mt-6 mb-3 first:mt-0 border-l-4 border-purple-500 pl-3">
             {line.replace('## ', '')}
           </h2>
         )
@@ -120,10 +132,7 @@ export default function ReportPage() {
       }
       if (line.startsWith('**【') && line.includes('】**')) {
         return (
-          <h4
-            key={i}
-            className="text-base font-bold text-purple-700 mt-5 mb-2"
-          >
+          <h4 key={i} className="text-base font-bold text-purple-700 mt-5 mb-2">
             {line.replace(/\*\*/g, '')}
           </h4>
         )
@@ -190,14 +199,14 @@ export default function ReportPage() {
       <div className="max-w-3xl mx-auto px-4 py-6">
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="p-5 md:p-6">
-            {report.isPaid ? (
+            {viewingFull ? (
               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium mb-4">
                 <CheckCircle className="w-3.5 h-3.5" />
                 完整报告
               </div>
             ) : (
               <div className="inline-block px-2.5 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium mb-4">
-                命理画像 · 免费
+                预览版 · 限时免费
               </div>
             )}
 
@@ -206,41 +215,41 @@ export default function ReportPage() {
             </article>
           </div>
 
-          {/* Paywall — 仅未付费时显示 */}
-          {!report.isPaid && (
+          {/* 微信号输入区 — 仅未提交时显示 */}
+          {!viewingFull && (
             <div className="relative">
-              <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-transparent to-white" />
-              <div className="bg-white pt-6 pb-8 px-5 text-center border-t border-slate-100">
-                <div className="inline-block p-3 bg-purple-100 rounded-full mb-4">
-                  <Lock className="w-6 h-6 text-purple-600" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">
-                  解锁完整职业分析
+              <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-transparent to-white" />
+              <div className="bg-white pt-4 pb-8 px-5 text-center border-t border-slate-100">
+                <h3 className="text-lg font-bold text-slate-900 mb-2">
+                  完整报告限时免费查看
                 </h3>
-                <p className="text-slate-500 text-sm mb-2">
-                  以上是命理底色解读，你已经了解自己是什么"材质"
-                </p>
-                <div className="text-slate-500 text-sm mb-4 space-y-1">
-                  <p>• 五行 → 大学专业推荐（3-5 个方向）</p>
-                  <p>• 五行 → 职业行业推荐（3-5 个岗位）</p>
-                  <p>• 十神 → 职业天赋详解</p>
-                  <p>• 大运 → 职业阶段规划（深耕 / 转型 / 收获）</p>
-                  <p>• 避坑指南（不适合的方向）</p>
-                </div>
-                <div className="text-3xl font-bold text-purple-600 mb-1">
-                  ¥39.90
-                </div>
-                <p className="text-xs text-slate-400 mb-5">
-                  一次购买，永久可查看
+                <p className="text-slate-500 text-sm mb-4">
+                  留下微信号，立即解锁完整八字专业职业解读
+                  <br />
+                  <span className="text-xs text-slate-400">
+                    包含：五行→专业推荐 · 十神→职业天赋 · 大运→职业规划
+                  </span>
                 </p>
 
-                <div className="max-w-xs mx-auto">
+                <div className="max-w-xs mx-auto space-y-3">
+                  <input
+                    type="text"
+                    value={wechatId}
+                    onChange={(e) => setWechatId(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && submitWechat()}
+                    placeholder="请输入您的微信号"
+                    className="w-full h-12 px-4 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none text-center"
+                  />
                   <button
-                    onClick={handleUnlockClick}
-                    className="w-full px-8 py-3.5 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold hover:opacity-90 transition shadow-lg shadow-purple-500/25"
+                    onClick={submitWechat}
+                    disabled={!wechatId.trim()}
+                    className="w-full py-3 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25"
                   >
-                    解锁完整报告
+                    解锁完整报告（限时免费）
                   </button>
+                  <p className="text-xs text-slate-400">
+                    完整报告 ¥9.90 · 当前内测限时免费
+                  </p>
                 </div>
               </div>
             </div>
@@ -254,76 +263,6 @@ export default function ReportPage() {
           </Link>
         </div>
       </div>
-
-      {/* Beta Modal */}
-      {showBetaModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 relative animate-in fade-in zoom-in duration-200">
-            <button
-              onClick={() => setShowBetaModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center">
-              <div className="inline-block p-3 bg-purple-100 rounded-full mb-4">
-                <Bell className="w-6 h-6 text-purple-600" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">
-                完整报告即将开放
-              </h3>
-              <p className="text-slate-600 text-sm leading-relaxed mb-4">
-                当前完整报告功能仍在内测阶段，我们正在根据用户反馈完善系统稳定性。
-              </p>
-              <p className="text-slate-500 text-sm mb-5">
-                你刚才的点击已经被记录，这将帮助我们优先开放你感兴趣的内容。
-              </p>
-
-              {!contactSubmitted ? (
-                <div className="space-y-3">
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={contactInput}
-                      onChange={(e) => setContactInput(e.target.value)}
-                      placeholder="邮箱或微信号（选填）"
-                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-                  <button
-                    onClick={submitContact}
-                    disabled={!contactInput.trim()}
-                    className="w-full py-2.5 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    通知我开放
-                  </button>
-                  <button
-                    onClick={() => setShowBetaModal(false)}
-                    className="w-full py-2.5 text-slate-500 hover:text-slate-700 text-sm"
-                  >
-                    我知道了
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-center gap-2 text-green-600">
-                    <CheckCircle className="w-5 h-5" />
-                    <span className="font-medium">已记录，感谢支持！</span>
-                  </div>
-                  <button
-                    onClick={() => setShowBetaModal(false)}
-                    className="w-full py-2.5 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition"
-                  >
-                    我知道了
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
