@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 const TIAN_GAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
 const DI_ZHI = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
 
-const API_URL = '/api/generate-fortune'
+const API_URL = 'https://fortell365-api.terencexu2521.workers.dev/generate'
 
 // 四柱名称
 const PILLARS = [
