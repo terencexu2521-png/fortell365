@@ -53,6 +53,15 @@ function extractGenderFromText(rawText: string): 'male' | 'female' | null {
   return null
 }
 
+// 安全拆分一个八字柱对（如"乙亥"→ {gan:"乙", zhi:"亥"}），校验天干地支合法性
+function splitBaziPair(pair: string): { gan: string; zhi: string } | null {
+  const chars = [...pair.trim()]
+  if (chars.length >= 2 && TIAN_GAN.includes(chars[0]) && DI_ZHI.includes(chars[1])) {
+    return { gan: chars[0], zhi: chars[1] }
+  }
+  return null
+}
+
 // 从图片裁剪出八字表格区域（排盘截图中部 25%~50%）
 async function cropToBaziTable(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -172,64 +181,69 @@ export default function GeneratePage() {
 
       const foundItems: string[] = []
 
-      // 1. 从裁剪区提取八字
+      // 1. 从裁剪区提取八字（用splitBaziPair确保天干/地支各入其位）
       const baziStr = extractBaziFromTable(text)
       if (baziStr) {
-        const parts = baziStr.split(' ')
-        if (parts.length === 4) {
-          setPillars({
-            year: { gan: parts[0].charAt(0), zhi: parts[0].substring(1) },
-            month: { gan: parts[1].charAt(0), zhi: parts[1].substring(1) },
-            day: { gan: parts[2].charAt(0), zhi: parts[2].substring(1) },
-            hour: { gan: parts[3].charAt(0), zhi: parts[3].substring(1) },
-          })
-          foundItems.push(`八字：${baziStr}`)
-          console.log('[OCR] ✅ 已填入八字:', baziStr)
-        }
-      } else {
-        console.warn('[OCR] ⚠️ 裁剪区未提取到八字，尝试全文识别')
-      }
-
-      // 2. 如果裁剪区提取失败，用原图全文识别兜底
-      if (!baziStr) {
-        console.log('[OCR] 兜底: 全文OCR...')
-        const { data: { text: fullText } } = await Tesseract.recognize(file, 'chi_sim', {
-          workerPath: '/tesseract/worker.min.js',
-          langPath: '/tesseract',
-        })
-        console.log('[OCR] 全文识别:', fullText.substring(0, 300))
-        const fallbackBazi = extractBaziFromTable(fullText)
-        if (fallbackBazi) {
-          const parts = fallbackBazi.split(' ')
-          if (parts.length === 4) {
+        const pairs = baziStr.split(' ')
+        if (pairs.length === 4) {
+          const parsed = pairs.map(splitBaziPair)
+          if (parsed.every((p): p is {gan:string;zhi:string} => p !== null)) {
             setPillars({
-              year: { gan: parts[0].charAt(0), zhi: parts[0].substring(1) },
-              month: { gan: parts[1].charAt(0), zhi: parts[1].substring(1) },
-              day: { gan: parts[2].charAt(0), zhi: parts[2].substring(1) },
-              hour: { gan: parts[3].charAt(0), zhi: parts[3].substring(1) },
+              year: { gan: parsed[0].gan, zhi: parsed[0].zhi },
+              month: { gan: parsed[1].gan, zhi: parsed[1].zhi },
+              day: { gan: parsed[2].gan, zhi: parsed[2].zhi },
+              hour: { gan: parsed[3].gan, zhi: parsed[3].zhi },
             })
-            foundItems.push(`八字：${fallbackBazi}`)
-            console.log('[OCR] ✅ 兜底识别成功:', fallbackBazi)
+            foundItems.push('八字：' + baziStr)
+            console.log('[OCR] ✅ 八字已填入, 年柱:', pairs[0], '→ gan:', parsed[0].gan, 'zhi:', parsed[0].zhi)
           }
         }
+      }
 
-        // 3. 性别和姓名从全文提取（这些在截图顶部，不在裁剪区）
-        const gender = extractGenderFromText(fullText)
-        if (gender) {
-          setGender(gender)
-          foundItems.push(`性别：${gender === 'male' ? '男' : '女'}`)
-        }
+      // 2. 始终用原图全文OCR提取名字和性别（这些在截图顶部，不在裁剪区）
+      const { data: { text: fullText } } = await Tesseract.recognize(file, 'chi_sim', {
+        workerPath: '/tesseract/worker.min.js',
+        langPath: '/tesseract',
+      })
+      console.log('[OCR] 全文识别(姓名/性别):', fullText.substring(0, 200))
 
-        const ocrName = extractNameFromText(fullText)
-        if (ocrName) {
-          setName(ocrName)
-          foundItems.push(`姓名：${ocrName}`)
+      const gender = extractGenderFromText(fullText)
+      if (gender) {
+        setGender(gender)
+        foundItems.push('性别：' + (gender === 'male' ? '男' : '女'))
+      }
+
+      const ocrName = extractNameFromText(fullText)
+      if (ocrName) {
+        setName(ocrName)
+        foundItems.push('姓名：' + ocrName)
+      }
+
+      // 3. 如果裁剪区八字提取失败，用全文兜底
+      if (!baziStr) {
+        console.log('[OCR] 兜底: 全文OCR提取八字...')
+        const fallbackBazi = extractBaziFromTable(fullText)
+        if (fallbackBazi) {
+          const pairs = fallbackBazi.split(' ')
+          if (pairs.length === 4) {
+            const parsed = pairs.map(splitBaziPair)
+            if (parsed.every((p): p is {gan:string;zhi:string} => p !== null)) {
+              setPillars({
+                year: { gan: parsed[0].gan, zhi: parsed[0].zhi },
+                month: { gan: parsed[1].gan, zhi: parsed[1].zhi },
+                day: { gan: parsed[2].gan, zhi: parsed[2].zhi },
+                hour: { gan: parsed[3].gan, zhi: parsed[3].zhi },
+              })
+              foundItems.push('八字：' + fallbackBazi)
+              console.log('[OCR] ✅ 兜底八字已填入:', fallbackBazi)
+            }
+          }
         }
       }
 
       // 汇总
       if (foundItems.length > 0) {
-        toast.success(`已自动填入：${foundItems.join('、')}`, { duration: 3000 })
+        toast.success('已自动填入：' + foundItems.join('、'), { duration: 3000 })
       } else {
         toast.error('未识别到八字信息，请手动填写', { duration: 4000 })
       }
