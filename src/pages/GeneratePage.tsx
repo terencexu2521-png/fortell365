@@ -112,11 +112,20 @@ export default function GeneratePage() {
       // 使用 Tesseract.js 在浏览器端做中文OCR
       console.log('[OCR Tesseract] 开始识别, 文件:', file.name, '大小:', file.size)
 
+      // Tesseract.js v5: 使用本地 worker 和语言包，避免 CDN 问题
       const { data: { text } } = await Tesseract.recognize(file, 'chi_sim', {
+        workerPath: '/tesseract/worker.min.js',
+        langPath: '/tesseract',
         logger: (info) => {
+          console.log('[OCR Tesseract] status:', info.status, info.progress)
           if (info.status === 'recognizing text') {
             const pct = Math.round((info.progress || 0) * 100)
-            toast.loading(`识别中 ${pct}%...`, { id: loadingToastId })
+            toast.loading(`AI识别中 ${pct}%...`, { id: loadingToastId })
+          } else if (info.status === 'loading language traineddata') {
+            const pct = Math.round((info.progress || 0) * 100)
+            toast.loading(`加载中文识别引擎 ${pct}%...`, { id: loadingToastId })
+          } else if (info.status === 'initializing tesseract') {
+            toast.loading('初始化识别引擎...', { id: loadingToastId })
           }
         },
       })
@@ -185,7 +194,14 @@ export default function GeneratePage() {
     } catch (err: any) {
       console.error('[OCR Tesseract] 异常:', err)
       toast.dismiss(loadingToastId)
-      toast.error('OCR识别失败，请手动填写')
+      const msg = err?.message || String(err)
+      if (msg.includes('NetworkError') || msg.includes('Failed to fetch') || msg.includes('timeout')) {
+        toast.error('识别引擎加载失败（网络问题），请手动填写', { duration: 5000 })
+      } else if (msg.includes('traineddata')) {
+        toast.error('中文语言包加载失败，请手动填写', { duration: 5000 })
+      } else {
+        toast.error('OCR识别失败，请手动填写', { duration: 4000 })
+      }
     } finally {
       setOcrProcessing(false)
       setStep('input')
