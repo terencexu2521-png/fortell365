@@ -192,31 +192,17 @@ export default function GeneratePage() {
     try {
       const foundItems: string[] = []
 
-      // 第一步：裁剪到表格区并转base64
-      const { ganBlob, zhiBlob } = await cropAndSplitBaziTable(file)
+      // 发送完整截图给 Worker，用 DeepSeek Vision 一次性识别姓名+性别+八字
+      toast.loading('AI 正在识别排盘...', { id: loadingToastId })
 
-      // 合并天干行和地支行成一张完整表格图，发给 Worker 用 DeepSeek Vision 识别
-      toast.loading('AI 正在识别八字...', { id: loadingToastId })
-      const mergedCanvas = document.createElement('canvas')
-      const ganImg = await createImageBitmap(ganBlob)
-      const zhiImg = await createImageBitmap(zhiBlob)
-      mergedCanvas.width = Math.max(ganImg.width, zhiImg.width)
-      mergedCanvas.height = ganImg.height + zhiImg.height
-      const mergedCtx = mergedCanvas.getContext('2d')!
-      mergedCtx.drawImage(ganImg, 0, 0)
-      mergedCtx.drawImage(zhiImg, 0, ganImg.height)
-      const mergedBlob = await new Promise<Blob>(resolve => mergedCanvas.toBlob(b => resolve(b!), 'image/png'))
-      ganImg.close(); zhiImg.close()
-
-      // 转base64发送给Worker
       const base64 = await new Promise<string>((resolve, reject) => {
         const r = new FileReader()
         r.onload = () => resolve(r.result as string)
         r.onerror = reject
-        r.readAsDataURL(mergedBlob)
+        r.readAsDataURL(file)
       })
 
-      console.log('[OCR] 发送裁剪表格图到 Worker, size:', base64.length)
+      console.log('[OCR] 发送完整截图到 Worker, size:', base64.length)
       const resp = await fetch(API_URL + '/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -224,44 +210,75 @@ export default function GeneratePage() {
       })
 
       const ocrData = await resp.json()
-      console.log('[OCR] Worker响应:', JSON.stringify(ocrData).substring(0, 300))
+      console.log('[OCR] Worker响应:', JSON.stringify(ocrData).substring(0, 400))
 
-      if (resp.ok && ocrData.success && ocrData.data?.pillars) {
-        const pillars = ocrData.data.pillars
-        if (pillars.length === 4) {
-          const validGans = TIAN_GAN, validZhis = DI_ZHI
-          const valid = pillars.every((p: {gan:string;zhi:string}) => validGans.includes(p.gan) && validZhis.includes(p.zhi))
+      toast.dismiss(loadingToastId)
+
+      if (resp.ok && ocrData.success) {
+        const result = ocrData.data || {}
+
+        // 提取姓名
+        const ocrName = (result.name || '').trim()
+        if (ocrName) {
+          setName(ocrName)
+          foundItems.push('姓名：' + ocrName)
+        }
+
+        // 提取性别
+        if (result.gender === 'male' || result.gender === 'female') {
+          setGender(result.gender)
+          foundItems.push('性别：' + (result.gender === 'male' ? '男' : '女'))
+        }
+
+        // 提取八字
+        if (result.pillars && result.pillars.length === 4) {
+          const p = result.pillars
+          const valid = p.every((x: {gan:string;zhi:string}) =>
+            TIAN_GAN.includes(x.gan) && DI_ZHI.includes(x.zhi))
           if (valid) {
             setPillars({
-              year: { gan: pillars[0].gan, zhi: pillars[0].zhi },
-              month: { gan: pillars[1].gan, zhi: pillars[1].zhi },
-              day: { gan: pillars[2].gan, zhi: pillars[2].zhi },
-              hour: { gan: pillars[3].gan, zhi: pillars[3].zhi },
+              year: { gan: p[0].gan, zhi: p[0].zhi },
+              month: { gan: p[1].gan, zhi: p[1].zhi },
+              day: { gan: p[2].gan, zhi: p[2].zhi },
+              hour: { gan: p[3].gan, zhi: p[3].zhi },
             })
-            const baziStr = ocrData.data.baziString
-            foundItems.push('八字：' + baziStr)
-            console.log('[OCR] ✅ DeepSeek Vision识别成功:', baziStr)
+            foundItems.push('八字：' + result.baziString)
+            console.log('[OCR] ✅ DeepSeek Vision:', result.baziString)
           }
         }
-      }
 
-      // 第二步：Tesseract全文OCR提取姓名和性别
-      toast.loading('提取姓名性别...', { id: loadingToastId })
-      const { data: { text: fullText } } = await Tesseract.recognize(file, 'chi_sim', {
-        workerPath: '/tesseract/worker.min.js',
-        langPath: '/tesseract',
-      })
-      console.log('[OCR] 姓名/性别文本:', fullText.substring(0, 200))
-
-      const gender = extractGenderFromText(fullText)
-      if (gender) {
-        setGender(gender)
-        foundItems.push('性别：' + (gender === 'male' ? '男' : '女'))
-      }
-      const ocrName = extractNameFromText(fullText)
-      if (ocrName) {
-        setName(ocrName)
-        foundItems.push('姓名：' + ocrName)
+        // 如果 DeepSeek 没识别全，用 Tesseract 兜底
+        if (foundItems.length < 2) {
+          console.log('[OCR] DeepSeek部分失败，Tesseract兜底...')
+          const { data: { text: fullText } } = await Tesseract.recognize(file, 'chi_sim', {
+            workerPath: '/tesseract/worker.min.js',
+            langPath: '/tesseract',
+          })
+          if (!foundItems.some(f => f.startsWith('性别'))) {
+            const g = extractGenderFromText(fullText)
+            if (g) { setGender(g); foundItems.push('性别：' + (g === 'male' ? '男' : '女')) }
+          }
+          if (!foundItems.some(f => f.startsWith('姓名'))) {
+            const n = extractNameFromText(fullText)
+            if (n) { setName(n); foundItems.push('姓名：' + n) }
+          }
+          if (!foundItems.some(f => f.startsWith('八字'))) {
+            const fb = extractBaziFromTable(fullText)
+            if (fb) {
+              const pairs = fb.split(' ')
+              if (pairs.length === 4) {
+                const parsed = pairs.map(p => { const c = [...p.trim()]; return c.length >= 2 && TIAN_GAN.includes(c[0]) && DI_ZHI.includes(c[1]) ? {gan:c[0],zhi:c[1]} : null })
+                if (parsed.every(p => p !== null)) {
+                  setPillars({ year: parsed[0]!, month: parsed[1]!, day: parsed[2]!, hour: parsed[3]! })
+                  foundItems.push('八字：' + fb)
+                  console.log('[OCR] ⚠️ Tesseract兜底:', fb, '(请核对)')
+                }
+              }
+            }
+          }
+        }
+      } else {
+        toast.error('AI识别失败，请手动填写', { duration: 4000 })
       }
 
       // 汇总
