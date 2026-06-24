@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Sparkles, Loader2, ArrowLeft, Upload, Camera, ScanLine } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -88,6 +88,12 @@ type FormData = Record<PillarKey, { gan: string; zhi: string }>
 export default function GeneratePage() {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 表单记忆：localStorage 自动保存，刷新不丢
+  const saveForm = (data: { name?: string; gender?: string; pillars?: FormData }) => {
+    try { localStorage.setItem('fortell365_draft', JSON.stringify({ name: data.name ?? name, gender: data.gender ?? gender, pillars: data.pillars ?? pillars })) } catch {}
+  }
+
   const [step, setStep] = useState<'input' | 'ocr' | 'loading'>('input')
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
@@ -101,8 +107,29 @@ export default function GeneratePage() {
   const [uploadPreview, setUploadPreview] = useState<string | null>(null)
   const [ocrProcessing, setOcrProcessing] = useState(false)
 
+  // 页面加载时恢复上次保存的表单
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('fortell365_draft')
+      if (saved) {
+        const d = JSON.parse(saved)
+        if (d.name) setName(d.name)
+        if (d.gender) setGender(d.gender)
+        if (d.pillars) setPillars(d.pillars)
+      }
+    } catch {}
+  }, [])
+
+  // 姓名/性别变更时自动保存
+  const handleNameChange = (v: string) => { setName(v); saveForm({ name: v }) }
+  const handleGenderChange = (v: string) => { setGender(v); saveForm({ gender: v }) }
+
   const updatePillar = (pillar: PillarKey, field: 'gan' | 'zhi', value: string) => {
-    setPillars((prev) => ({ ...prev, [pillar]: { ...prev[pillar], [field]: value } }))
+    setPillars((prev) => {
+      const next = { ...prev, [pillar]: { ...prev[pillar], [field]: value } }
+      saveForm({ name, gender, pillars: next })
+      return next
+    })
   }
 
   const isBaziComplete = () => Object.values(pillars).every((p) => p.gan && p.zhi)
@@ -307,14 +334,14 @@ export default function GeneratePage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">姓名/昵称 *</label>
-              <input type="text" placeholder="如何称呼您" value={name} onChange={(e) => setName(e.target.value)}
+              <input type="text" placeholder="如何称呼您" value={name} onChange={(e) => handleNameChange(e.target.value)}
                 className="w-full h-12 px-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">性别 *</label>
               <div className="flex gap-3">
                 {[{ value: 'male', label: '男' }, { value: 'female', label: '女' }].map((g) => (
-                  <button key={g.value} type="button" onClick={() => setGender(g.value)}
+                  <button key={g.value} type="button" onClick={() => handleGenderChange(g.value)}
                     className={`flex-1 h-12 rounded-xl border transition ${
                       gender === g.value ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}>{g.label}</button>
