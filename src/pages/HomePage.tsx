@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
-import { Sparkles, Sun, Award, BookOpen, Briefcase, ArrowRight } from 'lucide-react'
+import { Sparkles, Sun, Award, BookOpen, Briefcase, ArrowRight, User } from 'lucide-react'
+import { useAuth } from '../lib/auth'
 
 export default function HomePage() {
+  const { user, logout } = useAuth()
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -11,7 +13,21 @@ export default function HomePage() {
             <Sparkles className="w-5 h-5 text-purple-600" />
             <span className="text-lg font-bold text-slate-900">八字专业职业解读</span>
           </div>
-          <span className="text-xs text-slate-400">国学智慧 | AI 解析</span>
+          <div className="flex items-center gap-2">
+            {user ? (
+              <>
+                <Link to="/reports" className="text-xs text-slate-500 hover:text-purple-600">
+                  <User className="w-4 h-4 inline mr-1" />{user.email}
+                </Link>
+                <button onClick={logout} className="text-xs text-slate-400 hover:text-slate-600">退出</button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="text-xs text-purple-600 hover:text-purple-700">登录</Link>
+                <Link to="/register" className="text-xs bg-purple-600 text-white px-3 py-1 rounded-full hover:bg-purple-700">注册</Link>
+              </>
+            )}
+          </div>
         </div>
       </header>
 

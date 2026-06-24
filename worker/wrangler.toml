@@ -6,8 +6,7 @@ compatibility_date = "2025-06-23"
 binding = "BAZI_KV"
 id = "36d00996b0d74aa6b381e9b86924a692"
 
-# D1暂未创建，临时注释，部署后需恢复
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "fortell365-db"
-# database_id = "PLACEHOLDER"
+[[d1_databases]]
+binding = "DB"
+database_name = "fortell365-db"
+database_id = "0f8701b5-906c-4193-9b19-e7537ea66395"
