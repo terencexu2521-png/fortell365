@@ -7,6 +7,11 @@ import Tesseract from 'tesseract.js'
 const TIAN_GAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
 const DI_ZHI = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
 const API_URL = 'https://fortell365-api.terencexu2521.workers.dev'
+const TESSERACT_OPTIONS = {
+  workerPath: '/tesseract/worker.min.js',
+  corePath: '/tesseract',
+  langPath: '/tesseract',
+}
 
 // 从排盘图的OCR文本中提取姓名（"坤造 张三"或"乾造 李四"模式）
 function extractNameFromText(rawText: string): string {
@@ -159,7 +164,7 @@ export default function GeneratePage() {
 
       toast.loading('正在识别八字表格...', { id: tid })
       const { data: { text: tableText } } = await Tesseract.recognize(cropped, 'chi_sim', {
-        workerPath: '/tesseract/worker.min.js', langPath: '/tesseract',
+        ...TESSERACT_OPTIONS,
         logger: (info) => {
           if (info.status === 'recognizing text') {
             toast.loading(`识别中 ${Math.round((info.progress||0)*100)}%...`, { id: tid })
@@ -186,7 +191,7 @@ export default function GeneratePage() {
       // 步骤2：全文OCR提取姓名和性别
       toast.loading('提取姓名性别...', { id: tid })
       const { data: { text: fullText } } = await Tesseract.recognize(file, 'chi_sim', {
-        workerPath: '/tesseract/worker.min.js', langPath: '/tesseract',
+        ...TESSERACT_OPTIONS,
       })
       const g = extractGenderFromText(fullText)
       if (g) { setGender(g); foundItems.push('性别：' + (g === 'male' ? '男' : '女')) }
