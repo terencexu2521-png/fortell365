@@ -5,3 +5,8 @@ compatibility_date = "2025-06-23"
 [[kv_namespaces]]
 binding = "BAZI_KV"
 id = "36d00996b0d74aa6b381e9b86924a692"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fortell365-db"
+database_id = "PLACEHOLDER"
