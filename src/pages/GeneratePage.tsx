@@ -2,10 +2,47 @@ import { useState, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Sparkles, Loader2, ArrowLeft, Upload, Camera, ScanLine } from 'lucide-react'
 import toast from 'react-hot-toast'
+import Tesseract from 'tesseract.js'
 
 const TIAN_GAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
 const DI_ZHI = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
 const API_URL = 'https://fortell365-api.terencexu2521.workers.dev'
+
+// 从OCR识别的原始文本中提取八字（多种格式兜底）
+function extractBaziFromText(rawText: string): string | null {
+  const G = '甲乙丙丁戊己庚辛壬癸', Z = '子丑寅卯辰巳午未申酉戌亥'
+  // 方法1: 标准格式 "甲子 丙寅 戊辰 壬戌"
+  const m1 = rawText.match(new RegExp(`([${G}][${Z}])\\s+([${G}][${Z}])\\s+([${G}][${Z}])\\s+([${G}][${Z}])`))
+  if (m1) return [m1[1], m1[2], m1[3], m1[4]].join(' ')
+  // 方法2: 无分隔 "甲子丙寅戊辰壬戌"
+  const m2 = rawText.match(new RegExp(`([${G}][${Z}])([${G}][${Z}])([${G}][${Z}])([${G}][${Z}])`))
+  if (m2) return [m2[1], m2[2], m2[3], m2[4]].join(' ')
+  // 方法3: 逐个提取天干+地支对
+  const pairs: string[] = []
+  const re = new RegExp(`([${G}])([${Z}])`, 'g')
+  let m
+  while ((m = re.exec(rawText)) !== null) pairs.push(m[1] + m[2])
+  if (pairs.length >= 4) return pairs.slice(-4).join(' ')
+  if (pairs.length === 4) return pairs.join(' ')
+  return null
+}
+
+// 从OCR识别的原始文本中尝试提取姓名
+function extractNameFromText(rawText: string): string {
+  // 常见排盘工具的姓名标注模式: "姓名：张三" "命主：张三" 等
+  const patterns = [
+    /姓名[：:]\s*(\S{2,4})/,
+    /命主[：:]\s*(\S{2,4})/,
+    /名字[：:]\s*(\S{2,4})/,
+    /氏名[：:]\s*(\S{2,4})/,
+    /姓名\s+(\S{2,4})/,
+  ]
+  for (const p of patterns) {
+    const m = rawText.match(p)
+    if (m) return m[1]
+  }
+  return ''
+}
 
 const PILLARS = [
   { key: 'year', label: '年柱', hint: '如甲子' },
@@ -69,42 +106,36 @@ export default function GeneratePage() {
     setOcrProcessing(true)
     setStep('ocr')
     const loadingToastId = 'ocr-loading'
-    toast.loading('AI 正在识别排盘图片...', { id: loadingToastId })
+    toast.loading('正在识别排盘图片...', { id: loadingToastId })
 
     try {
-      // 读取为 base64
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader()
-        r.onload = () => resolve(r.result as string)
-        r.onerror = reject
-        r.readAsDataURL(file)
+      // 使用 Tesseract.js 在浏览器端做中文OCR
+      console.log('[OCR Tesseract] 开始识别, 文件:', file.name, '大小:', file.size)
+
+      const { data: { text } } = await Tesseract.recognize(file, 'chi_sim', {
+        logger: (info) => {
+          if (info.status === 'recognizing text') {
+            const pct = Math.round((info.progress || 0) * 100)
+            toast.loading(`识别中 ${pct}%...`, { id: loadingToastId })
+          }
+        },
       })
 
-      console.log('[OCR] 发送请求, 图片大小:', base64.length, 'bytes')
+      console.log('[OCR Tesseract] 识别完成, 文本长度:', text.length)
+      console.log('[OCR Tesseract] 原始文本:', text.substring(0, 500))
 
-      const resp = await fetch(`${API_URL}/ocr`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64 }),
-      })
+      toast.dismiss(loadingToastId)
 
-      const data = await resp.json()
-      console.log('[OCR] 响应:', JSON.stringify(data).substring(0, 500))
-
-      if (!resp.ok || !data.success) {
-        toast.dismiss(loadingToastId)
-        toast.error(data.error || 'OCR识别失败，请手动填写')
+      if (!text || text.trim().length < 4) {
+        toast.error('图片中未识别到文字，请确保图片清晰')
         return
       }
-
-      const result = data.data
-      toast.dismiss(loadingToastId)
 
       let foundItems: string[] = []
       let missingItems: string[] = []
 
-      // 填充姓名（只要不是空字符串就填）
-      const ocrName = (result.name || '').trim()
+      // 1. 提取姓名
+      const ocrName = extractNameFromText(text)
       if (ocrName) {
         setName(ocrName)
         foundItems.push(`姓名：${ocrName}`)
@@ -113,66 +144,48 @@ export default function GeneratePage() {
         missingItems.push('姓名')
       }
 
-      // 填充性别
-      const ocrGender = result.gender || ''
-      if (ocrGender === 'male' || ocrGender === 'female') {
-        setGender(ocrGender)
-        foundItems.push(`性别：${ocrGender === 'male' ? '男' : '女'}`)
-        console.log('[OCR] 已填入性别:', ocrGender)
+      // 2. 提取八字
+      const baziStr = extractBaziFromText(text)
+      if (baziStr) {
+        const parts = baziStr.split(' ')
+        if (parts.length === 4) {
+          const newPillars: FormData = {
+            year: { gan: parts[0].charAt(0), zhi: parts[0].substring(1) },
+            month: { gan: parts[1].charAt(0), zhi: parts[1].substring(1) },
+            day: { gan: parts[2].charAt(0), zhi: parts[2].substring(1) },
+            hour: { gan: parts[3].charAt(0), zhi: parts[3].substring(1) },
+          }
+          setPillars(newPillars)
+          foundItems.push(`八字：${baziStr}`)
+          console.log('[OCR] 已填入八字:', baziStr)
+        }
+      } else {
+        missingItems.push('八字')
+      }
+
+      // 3. 尝试识别性别
+      if (/女|female|♀/.test(text)) {
+        setGender('female')
+        foundItems.push('性别：女')
+      } else if (/男|male|♂/.test(text)) {
+        setGender('male')
+        foundItems.push('性别：男')
       } else {
         missingItems.push('性别')
       }
 
-      // 填充八字
-      if (result.pillars && result.pillars.length === 4) {
-        // 新增：校验每个pillar的gan和zhi是否合法
-        const validGans = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸']
-        const validZhis = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥']
-        const allValid = result.pillars.every(
-          (p: { gan: string; zhi: string }) =>
-            validGans.includes(p.gan) && validZhis.includes(p.zhi)
-        )
-
-        if (allValid) {
-          const newPillars: FormData = {
-            year: { gan: '', zhi: '' },
-            month: { gan: '', zhi: '' },
-            day: { gan: '', zhi: '' },
-            hour: { gan: '', zhi: '' },
-          }
-          result.pillars.forEach((p: { gan: string; zhi: string }, i: number) => {
-            const key = PILLARS[i].key
-            newPillars[key] = { gan: p.gan, zhi: p.zhi }
-          })
-          setPillars(newPillars)
-          foundItems.push(`八字：${result.baziString}`)
-          console.log('[OCR] 已填入八字:', result.baziString)
-        } else {
-          missingItems.push('八字（识别结果包含非法字符）')
-          toast.error('八字识别结果格式异常，请手动填写', { duration: 4000 })
-        }
-      } else {
-        if (result.needsManualCheck) {
-          missingItems.push('八字（需手动核对）')
-          toast.error('八字识别不完整，请手动核对补充', { duration: 4000 })
-        } else {
-          missingItems.push('八字')
-          toast.error('未识别到八字信息，请手动填写', { duration: 4000 })
-        }
-      }
-
-      // 汇总提示
+      // 汇总
       if (foundItems.length > 0) {
         toast.success(`已自动填入：${foundItems.join('、')}`, { duration: 3000 })
       }
       if (missingItems.length > 0 && foundItems.length === 0) {
-        toast.error(`未识别到：${missingItems.join('、')}，请手动填写`, { duration: 5000 })
+        toast.error(`未识别到关键信息，请手动填写`, { duration: 4000 })
       }
 
     } catch (err: any) {
-      console.error('[OCR] 异常:', err)
+      console.error('[OCR Tesseract] 异常:', err)
       toast.dismiss(loadingToastId)
-      toast.error('OCR服务异常，请手动填写')
+      toast.error('OCR识别失败，请手动填写')
     } finally {
       setOcrProcessing(false)
       setStep('input')
