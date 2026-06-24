@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Loader2, Share2, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, Share2, CheckCircle, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useAuth, API } from '../lib/auth'
 
 interface ReportData {
   reportId: string
@@ -12,6 +13,7 @@ interface ReportData {
 
 export default function ReportPage() {
   const { id } = useParams<{ id: string }>()
+  const { user } = useAuth()
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [wechatId, setWechatId] = useState('')
@@ -41,6 +43,34 @@ export default function ReportPage() {
     }
     loadReport()
   }, [id])
+
+  // 登录状态下自动保存报告到云端
+  const [savedToCloud, setSavedToCloud] = useState(false)
+  useEffect(() => {
+    if (!report || !user || savedToCloud) return
+    const save = async () => {
+      try {
+        const resp = await fetch(API + '/reports', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + user.token },
+          body: JSON.stringify({ reportId: report.reportId, name: report.formData?.name || '', gender: report.formData?.gender || '', baziString: report.formData?.baziString || '', content: report.fullContent })
+        })
+        if (resp.ok) { setSavedToCloud(true); console.log('[Report] 已自动保存到云端') }
+      } catch { /* 静默失败，不影响查看 */ }
+    }
+    save()
+  }, [report, user])
+
+  const saveReport = async () => {
+    if (!user || !report) return
+    try {
+      const resp = await fetch(API + '/reports', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + user.token },
+        body: JSON.stringify({ reportId: report.reportId, name: report.formData?.name || '', gender: report.formData?.gender || '', baziString: report.formData?.baziString || '', content: report.fullContent })
+      })
+      if (resp.ok) { setSavedToCloud(true); toast.success('已保存到我的报告') }
+      else { toast.error('保存失败') }
+    } catch { toast.error('保存失败') }
+  }
 
   const submitWechat = () => {
     const trimmed = wechatId.trim()
@@ -259,9 +289,16 @@ export default function ReportPage() {
             </Link>
             <h1 className="text-lg font-semibold text-slate-900">八字命理报告</h1>
           </div>
-          <button className="p-2 text-slate-400 hover:text-slate-600" onClick={() => toast.success('已复制链接')}>
-            <Share2 className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {user && !savedToCloud && (
+              <button onClick={saveReport} className="text-xs px-2 py-1 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100">
+                <Save className="w-4 h-4 inline mr-1" />保存
+              </button>
+            )}
+            {!user && (
+              <Link to="/login" className="text-xs text-slate-400 hover:text-purple-600">登录保存</Link>
+            )}
+          </div>
         </div>
       </header>
 
