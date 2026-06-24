@@ -8,8 +8,8 @@ const TIAN_GAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬',
 const DI_ZHI = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
 const API_URL = 'https://fortell365-api.terencexu2521.workers.dev'
 
-// 从OCR识别的原始文本中提取八字（多种格式兜底）
-function extractBaziFromText(rawText: string): string | null {
+// 标准排盘表格格式：天干一行、地支一行，按列配对提取
+function extractBaziFromTable(rawText: string): string | null {
   const G = '甲乙丙丁戊己庚辛壬癸', Z = '子丑寅卯辰巳午未申酉戌亥'
   // 方法1: 标准格式 "甲子 丙寅 戊辰 壬戌"
   const m1 = rawText.match(new RegExp(`([${G}][${Z}])\\s+([${G}][${Z}])\\s+([${G}][${Z}])\\s+([${G}][${Z}])`))
@@ -17,31 +17,63 @@ function extractBaziFromText(rawText: string): string | null {
   // 方法2: 无分隔 "甲子丙寅戊辰壬戌"
   const m2 = rawText.match(new RegExp(`([${G}][${Z}])([${G}][${Z}])([${G}][${Z}])([${G}][${Z}])`))
   if (m2) return [m2[1], m2[2], m2[3], m2[4]].join(' ')
-  // 方法3: 逐个提取天干+地支对
-  const pairs: string[] = []
-  const re = new RegExp(`([${G}])([${Z}])`, 'g')
-  let m
-  while ((m = re.exec(rawText)) !== null) pairs.push(m[1] + m[2])
-  if (pairs.length >= 4) return pairs.slice(-4).join(' ')
-  if (pairs.length === 4) return pairs.join(' ')
+  // 方法3: 表格模式——天干行和地支行分别提取后按列配对
+  const compact = rawText.replace(/\s+/g, '')
+  const gans: string[] = []
+  const zhis: string[] = []
+  for (const ch of compact) {
+    if (G.includes(ch) && gans.length < 4) gans.push(ch)
+    else if (Z.includes(ch) && zhis.length < 4) zhis.push(ch)
+  }
+  if (gans.length === 4 && zhis.length === 4) {
+    return `${gans[0]}${zhis[0]} ${gans[1]}${zhis[1]} ${gans[2]}${zhis[2]} ${gans[3]}${zhis[3]}`
+  }
   return null
 }
 
-// 从OCR识别的原始文本中尝试提取姓名
+// 从排盘图的OCR文本中提取姓名（"坤造 张三"或"乾造 李四"模式）
 function extractNameFromText(rawText: string): string {
-  // 常见排盘工具的姓名标注模式: "姓名：张三" "命主：张三" 等
-  const patterns = [
-    /姓名[：:]\s*(\S{2,4})/,
-    /命主[：:]\s*(\S{2,4})/,
-    /名字[：:]\s*(\S{2,4})/,
-    /氏名[：:]\s*(\S{2,4})/,
-    /姓名\s+(\S{2,4})/,
-  ]
-  for (const p of patterns) {
-    const m = rawText.match(p)
-    if (m) return m[1]
+  // 排盘工具常见模式: "坤造 唐琦" / "乾造 张三"
+  const m = rawText.match(/(?:坤造|乾造)\s*(\S{2,4})/)
+  if (m) return m[1]
+  // 备用: "姓名：张三" "命主：张三"
+  for (const p of [/姓名[：:]\s*(\S{2,4})/, /命主[：:]\s*(\S{2,4})/]) {
+    const mm = rawText.match(p)
+    if (mm) return mm[1]
   }
   return ''
+}
+
+// 从排盘图OCR文本识别性别（"坤造"=女, "乾造"=男）
+function extractGenderFromText(rawText: string): 'male' | 'female' | null {
+  if (/坤造/.test(rawText)) return 'female'
+  if (/乾造/.test(rawText)) return 'male'
+  if (/女|female|♀/.test(rawText)) return 'female'
+  if (/男|male|♂/.test(rawText)) return 'male'
+  return null
+}
+
+// 从图片裁剪出八字表格区域（排盘截图中部 25%~50%）
+async function cropToBaziTable(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      // 八字表格在屏幕中上部（约25%~50%处），只裁剪这个区域提高识别精度
+      const cropY = Math.round(img.height * 0.25)
+      const cropH = Math.round(img.height * 0.20)
+      canvas.width = img.width
+      canvas.height = cropH
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, cropY, img.width, cropH, 0, 0, img.width, cropH)
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob)
+        else reject(new Error('Canvas裁剪失败'))
+      }, 'image/png')
+    }
+    img.onerror = () => reject(new Error('图片加载失败'))
+    img.src = URL.createObjectURL(file)
+  })
 }
 
 const PILLARS = [
@@ -106,33 +138,31 @@ export default function GeneratePage() {
     setOcrProcessing(true)
     setStep('ocr')
     const loadingToastId = 'ocr-loading'
-    toast.loading('正在识别排盘图片...', { id: loadingToastId })
+    toast.loading('正在加载识别引擎...', { id: loadingToastId })
 
     try {
-      // 使用 Tesseract.js 在浏览器端做中文OCR
-      console.log('[OCR Tesseract] 开始识别, 文件:', file.name, '大小:', file.size)
+      // 第一步：裁剪到八字表格区域，提高识别精度
+      const croppedBlob = await cropToBaziTable(file)
 
-      // Tesseract.js v5: 使用本地 worker 和语言包，避免 CDN 问题
-      const { data: { text } } = await Tesseract.recognize(file, 'chi_sim', {
+      console.log('[OCR] 裁剪完成, cropped size:', croppedBlob.size)
+
+      // 第二步：Tesseract.js 浏览器端 OCR
+      const { data: { text } } = await Tesseract.recognize(croppedBlob, 'chi_sim', {
         workerPath: '/tesseract/worker.min.js',
         langPath: '/tesseract',
         logger: (info) => {
-          console.log('[OCR Tesseract] status:', info.status, info.progress)
+          console.log('[OCR] status:', info.status, info.progress)
           if (info.status === 'recognizing text') {
             const pct = Math.round((info.progress || 0) * 100)
             toast.loading(`AI识别中 ${pct}%...`, { id: loadingToastId })
           } else if (info.status === 'loading language traineddata') {
             const pct = Math.round((info.progress || 0) * 100)
-            toast.loading(`加载中文识别引擎 ${pct}%...`, { id: loadingToastId })
-          } else if (info.status === 'initializing tesseract') {
-            toast.loading('初始化识别引擎...', { id: loadingToastId })
+            toast.loading(`加载中文引擎 ${pct}%...`, { id: loadingToastId })
           }
         },
       })
 
-      console.log('[OCR Tesseract] 识别完成, 文本长度:', text.length)
-      console.log('[OCR Tesseract] 原始文本:', text.substring(0, 500))
-
+      console.log('[OCR] 裁剪区识别完成:', text.substring(0, 300))
       toast.dismiss(loadingToastId)
 
       if (!text || text.trim().length < 4) {
@@ -140,65 +170,76 @@ export default function GeneratePage() {
         return
       }
 
-      let foundItems: string[] = []
-      let missingItems: string[] = []
+      const foundItems: string[] = []
 
-      // 1. 提取姓名
-      const ocrName = extractNameFromText(text)
-      if (ocrName) {
-        setName(ocrName)
-        foundItems.push(`姓名：${ocrName}`)
-        console.log('[OCR] 已填入姓名:', ocrName)
-      } else {
-        missingItems.push('姓名')
-      }
-
-      // 2. 提取八字
-      const baziStr = extractBaziFromText(text)
+      // 1. 从裁剪区提取八字
+      const baziStr = extractBaziFromTable(text)
       if (baziStr) {
         const parts = baziStr.split(' ')
         if (parts.length === 4) {
-          const newPillars: FormData = {
+          setPillars({
             year: { gan: parts[0].charAt(0), zhi: parts[0].substring(1) },
             month: { gan: parts[1].charAt(0), zhi: parts[1].substring(1) },
             day: { gan: parts[2].charAt(0), zhi: parts[2].substring(1) },
             hour: { gan: parts[3].charAt(0), zhi: parts[3].substring(1) },
-          }
-          setPillars(newPillars)
+          })
           foundItems.push(`八字：${baziStr}`)
-          console.log('[OCR] 已填入八字:', baziStr)
+          console.log('[OCR] ✅ 已填入八字:', baziStr)
         }
       } else {
-        missingItems.push('八字')
+        console.warn('[OCR] ⚠️ 裁剪区未提取到八字，尝试全文识别')
       }
 
-      // 3. 尝试识别性别
-      if (/女|female|♀/.test(text)) {
-        setGender('female')
-        foundItems.push('性别：女')
-      } else if (/男|male|♂/.test(text)) {
-        setGender('male')
-        foundItems.push('性别：男')
-      } else {
-        missingItems.push('性别')
+      // 2. 如果裁剪区提取失败，用原图全文识别兜底
+      if (!baziStr) {
+        console.log('[OCR] 兜底: 全文OCR...')
+        const { data: { text: fullText } } = await Tesseract.recognize(file, 'chi_sim', {
+          workerPath: '/tesseract/worker.min.js',
+          langPath: '/tesseract',
+        })
+        console.log('[OCR] 全文识别:', fullText.substring(0, 300))
+        const fallbackBazi = extractBaziFromTable(fullText)
+        if (fallbackBazi) {
+          const parts = fallbackBazi.split(' ')
+          if (parts.length === 4) {
+            setPillars({
+              year: { gan: parts[0].charAt(0), zhi: parts[0].substring(1) },
+              month: { gan: parts[1].charAt(0), zhi: parts[1].substring(1) },
+              day: { gan: parts[2].charAt(0), zhi: parts[2].substring(1) },
+              hour: { gan: parts[3].charAt(0), zhi: parts[3].substring(1) },
+            })
+            foundItems.push(`八字：${fallbackBazi}`)
+            console.log('[OCR] ✅ 兜底识别成功:', fallbackBazi)
+          }
+        }
+
+        // 3. 性别和姓名从全文提取（这些在截图顶部，不在裁剪区）
+        const gender = extractGenderFromText(fullText)
+        if (gender) {
+          setGender(gender)
+          foundItems.push(`性别：${gender === 'male' ? '男' : '女'}`)
+        }
+
+        const ocrName = extractNameFromText(fullText)
+        if (ocrName) {
+          setName(ocrName)
+          foundItems.push(`姓名：${ocrName}`)
+        }
       }
 
       // 汇总
       if (foundItems.length > 0) {
         toast.success(`已自动填入：${foundItems.join('、')}`, { duration: 3000 })
-      }
-      if (missingItems.length > 0 && foundItems.length === 0) {
-        toast.error(`未识别到关键信息，请手动填写`, { duration: 4000 })
+      } else {
+        toast.error('未识别到八字信息，请手动填写', { duration: 4000 })
       }
 
     } catch (err: any) {
-      console.error('[OCR Tesseract] 异常:', err)
+      console.error('[OCR] 异常:', err)
       toast.dismiss(loadingToastId)
       const msg = err?.message || String(err)
       if (msg.includes('NetworkError') || msg.includes('Failed to fetch') || msg.includes('timeout')) {
         toast.error('识别引擎加载失败（网络问题），请手动填写', { duration: 5000 })
-      } else if (msg.includes('traineddata')) {
-        toast.error('中文语言包加载失败，请手动填写', { duration: 5000 })
       } else {
         toast.error('OCR识别失败，请手动填写', { duration: 4000 })
       }
