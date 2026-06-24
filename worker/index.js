@@ -1,5 +1,5 @@
-// Cloudflare Worker: 八字专业职业解读 API v3.2
-// v3.2: 小乌龟Prompt优化 — 去括号指令,洞察优先,场景化表达,"通俗版"→"白话解读"
+// Cloudflare Worker: 八字专业职业解读 API v3.3
+// v3.3: 修复 - 死标题约束(回调10模块), 子标题从####→###, 加双重死约束
 
 const GAN = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
 const ZHI = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
@@ -117,7 +117,9 @@ function buildPrompt(pillars,name,gender){
   else if(dw==='金')yongShenHint='土（印星生身）为主，辅以水（食伤泄秀）';
   else if(dw==='土')yongShenHint='火（印星生身）为主，辅以金（食伤泄秀）';
 
-  return `你是一位资深命理师，精通《渊海子平》《三命通会》。你不是在填表格——你是在帮一位朋友看他的八字。
+  return `🔒 【死约束 — 违反输出无效】以下10个模块标题和子标题必须一字不差输出。你不允许改动任何标题的文字、标点或顺序。子标题只能用"### 专业分析"和"### 白话解读"，不能用其他格式。如果改了任何一个字，整个输出无效。这条规则高于其他所有写作建议。
+
+你是一位资深命理师，精通《渊海子平》《三命通会》。你不是在填表格——你是在帮一位朋友看他的八字。
 
 用户：${name}，${genderLabel}
 
@@ -150,85 +152,105 @@ ${dyTable}
 
 ---
 
-## 你的写作原则
+## 写作风格（不影响标题约束）
 
-**洞察优先**：找到这个八字真正有意思的矛盾或天赋，在那里展开。平淡的常规信息一两句带过。比如全局无财星、杀印相生、地支三合局——这种信号值得深入聊聊；而"五行某元素偏旺"这种点到为止。
+洞察优先：找到这个八字真正有意思的矛盾或天赋，在那里展开。平淡的常规信息一两句带过。全局无财星、杀印相生、地支三合局——这种信号值得深入聊聊。
 
-**场景化表达**：不要说"你热情大方"，要说"你在团队里不自觉地就成了那个带动气氛的人"。不要说"你有领导力"，要说"你往往是群体里最先看清方向、然后大家跟着你走的那个人"。把命理结论翻译成真实的生活场景。
+场景化表达：不要说"你热情大方"，要说"你在团队里不自觉地就成了那个带动气氛的人"。把命理结论翻译成真实的生活场景。
 
-**有温度**：像深夜跟朋友聊天。推测用"大概率""往往是""你可能会发现"，不用"一定""绝对"。
+有温度：推测用"大概率""往往是""你可能会发现"，不用"一定""绝对"。
 
-**字数**：3000~5000字。质量优先，不用凑字数。
-
----
-
-下面8个标题必须一字不改。每个模块用"### 命理分析"写专业推导，用"### 白话解读"翻译成生活语言。表格用PLANTEXT包裹。
+字数3000~5000字，质量优先。表格用PLANTEXT包裹。
 
 ---
 
-## 模块一：你的命盘
+以下是10个模块的死标题，**一字不改输出**。每个模块下必须用"### 专业分析"然后"### 白话解读"两个子标题。
 
-### 命理分析
-呈现八字排盘表格。日主得令还是失令。天干排列有什么特点——是食伤生财、杀印相生、还是食神泄秀？纳音格局如果有明显流转也提一下。
+## 模块一：命盘概览
 
-### 白话解读
-用${rizhuMeta[dg]||''}的比喻把这个命格说清楚。天干排列暗示的人生节奏用一句话概括。这个模块不用太长——铺垫性的介绍。
-
-## 模块二：你的性格
-
-### 命理分析
-从日主五行和最强的十神组合入手。比如"月柱丙火偏印贴身→思维有深度、学东西快，但容易想太多"——具体到行为模式，别停留在形容词。
+### 专业分析
+呈现八字排盘表格。日主得令还是失令。天干排列有什么特点。纳音格局如有明显流转提一下。
 
 ### 白话解读
-说说这个性格在真实生活中是什么样子。比如"你接到一个新任务，第一反应不是动手、而是先查三天资料把它吃透——这就是偏印的运作方式"。让用户读着能对号入座。这个模块要写透，因为用户最关心"我是个什么样的人"。
+用${rizhuMeta[dg]||''}的比喻把这个命格说清楚。天干排列暗示的人生节奏用一句大白话概括。
 
-## 模块三：天赋与盲区
+## 模块二：性格DNA
 
-### 命理分析
-五行统计表放这里。最旺五行指向什么天赋，最弱五行暴露什么盲区。结合十神说清楚天赋的具体形态——不是笼统的"你有才华"，而是"食神制杀意味着你越在压力下越能出活儿"。格局定性一句话概括。如果全局无某个十神，那个缺失就是核心盲区，值得多写。
-
-### 白话解读
-你有什么核心优势，在什么场合最容易发光。短板不是让你去"改正"的——告诉你该找什么样的人搭档互补。优势写清楚、短板写温和——用"可能需要注意"而不是"你很差劲"。
-
-## 模块四：关系密码
-
-### 命理分析
-年月、日时的地支关系最关键。六合和六冲比三合更有分量——它们直接影响日常互动。关系多有料的可以展开，干净的别硬说。
+### 专业分析
+从日主五行和最强的十神组合入手。具体到行为模式——别说"你有才华"，要说"你食神透干，靠手艺和作品说话"。
 
 ### 白话解读
-年月关系关联原生家庭和早年——"你小时候家里大概率……"。日时关系影响伴侣关系、子女缘和晚年。把冲动写成人际张力，把合写成相处默契。关系干净简单就少说——不是每段关系都值得长篇大论。
+这个性格在真实生活中的表现。比如"你接到新任务第一反应是先研究透再动手"。让用户能对号入座。写透——用户最关心的模块。
 
-## 模块五：人生节奏
+## 模块三：五行力量深度分析
 
-### 命理分析
-逐十年大运分析。用神运的阶段往往是高光期；忌神运需要谨慎。说说五行怎么变、事业财运感情信号是什么。换大运节点年份提醒。有料的阶段展开写，平淡的一句带过。
+### 专业分析
+五行统计表。最旺五行→天赋，最弱五行→盲区。五行生克链条。
+
+### 白话解读
+五行格局优势+需要补充的方向，各一句说清。
+
+## 模块四：格局与十神详解
+
+### 专业分析
+四柱各柱天干十神+地支藏干十神。核心格局定性——"食神泄秀格""杀印相生""财官双美"。全局无某十神的显著特征点明。
+
+### 白话解读
+天赋引擎在哪，核心驱动力是什么。如有全局无官星/无财星等特征，用生活化语言说清影响。
+
+## 模块五：地支关系与人生密码
+
+### 专业分析
+最关键的地支关系——六合和六冲比三合更有分量。年月、日时关系最重要。有关系多的展开，干净的别硬说。
+
+### 白话解读
+年月→原生家庭和早年环境。日时→伴侣、子女和晚年。冲动→人际张力，合→相处默契。
+
+## 模块六：身强弱与用神喜忌
+
+### 专业分析
+日主${dg}生于${yueZhi}月→${deling?'得令':'不得令'}判断。得地/得势分析。用神${yongShenHint}。用神/喜神/忌神表格。
+
+### 白话解读
+身强还是身弱→这意味着什么。优势和注意事项。
+
+## 模块七：人生各阶段命理详解
+
+### 专业分析
+逐十年大运分析。用神运=高光期，忌神运=需谨慎。五行变化、事业财运感情信号。有料的展开，平淡的一句带过。
 
 ${dayun.map((d,i)=>{return `**${d.startAge}-${d.endAge}岁 [${d.quanpin}]（${d.wuxing}·${getShiShen(dg,d.gan)}）**`;}).join('\\n')}
 
 ### 白话解读
-用"你回忆一下…"开头，对已走过的做验证式描述——"你大概在XX岁前后有过一次重要转折"。正在经历的给具体建议。还没到来的给趋势判断。这是用户最觉得"准"的模块——写得越细越好。
+"你回忆一下…"开头。已走过的验证式描述，正在经历的具体建议，未来的趋势判断。写得越细越好——这是用户最觉得"准"的模块。
 
-## 模块六：当前运势
+## 模块八：当前运势详判
 
-### 命理分析
-当前大运阶段判断。2026丙午流年天干丙火、地支午火，分析它们跟原局各柱的合冲关系，跟大运的互动。
-
-### 白话解读
-今年一句话定调，然后说机遇在哪、坑在哪。不用面面俱到——抓住最可能发生的一两件事说透。
-
-## 模块七：适合的方向
-
-### 命理分析
-用神${yongShenHint}。根据日主五行、最强十神和用神方向，梳理最适合的赛道。五行→行业映射有理有据。点一下哪些方向气场不完全吻合。
+### 专业分析
+当前大运阶段。2026丙午流年天干丙火地支午火，与原局各柱合冲关系，与大运的互动。
 
 ### 白话解读
-做什么类型工作最不容易累、最容易出结果。适合的行业一句话点明原因。不适合的用"可能"开头——命理给的是倾向，不是判决。
+今年一句话定调。机遇在哪，坑在哪。抓住最可能发生的一两件事说透。
 
-## 模块八：一句话总结
+## 模块九：天赋领域与人生优势
 
-用一句话说透这个命格的本质。有诗意、有力量，像懂命理的老朋友看完盘后说的那句掏心话。最后提一句你最需要留意的事。
+### 专业分析
+日主五行+最强十神+用神方向→核心天赋领域。五行→行业映射有理有据。不太适合的方向也点一下。
+
+### 白话解读
+做什么最容易出彩。适合的行业点明原因。不适合的用"可能"开头——命理给倾向不给判决。
+
+## 模块十：命格总结
+
+### 专业分析
+一句命理格言或经典论断收尾。这个命格最大的优势和最需注意的风险。
+
+### 白话解读
+一句话道破命格本质，有诗意有力量。像懂命理的老朋友看完盘后说的掏心话。
 
 ---
+
+🔒 【再次强调死约束】你输出的标题必须是上面10个，一字不差。如果输出"模块一：你的命盘"而不是"模块一：命盘概览"→ 无效。如果用"### 命理分析"而不是"### 专业分析"→ 无效。标题里的冒号必须是中文全角：。违反任何一条，输出作废。
 
 > ⚠️ 命理分析仅供娱乐参考。`;
 }
@@ -257,7 +279,7 @@ export default {
     if(request.method==='OPTIONS')return new Response(null,{headers:cors});
     const url=new URL(request.url);
 
-    // OCR 端点
+    // OCR
     if(request.method==='POST' && url.pathname==='/ocr'){
       try {
         const input=await request.json();
@@ -273,7 +295,7 @@ export default {
       }catch(err){return new Response(JSON.stringify({error:'OCR异常:'+err.message}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
     }
 
-    // 认证 + 报告管理
+    // Auth + Reports (D1 required)
     if(request.method==='POST' && url.pathname==='/auth/register'){
       try {
         const {email,password}=await request.json();
@@ -324,13 +346,13 @@ export default {
       }catch(err){return new Response(JSON.stringify({error:'查询失败:'+err.message}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
     }
 
-    // 生成报告
+    // Generate
     if(request.method==='POST'){
       try {
         const input=await request.json();
         if(!input.baziString)return new Response(JSON.stringify({error:'请提供baziString'}),{status:400,headers:{...cors,'Content-Type':'application/json'}});
         const pillars=parseBazi(input.baziString);
-        if(pillars.length!==4)return new Response(JSON.stringify({error:'八字需4柱,当前:'+pillars.length}),{status:400,headers:{...cors,'Content-Type':'application/json'}});
+        if(pillars.length!==4)return new Response(JSON.stringify({error:'八字需4柱'}),{status:400,headers:{...cors,'Content-Type':'application/json'}});
         const prompt=buildPrompt(pillars,input.name||'用户',input.gender||'male');
         const aiRes=await fetch('https://api.deepseek.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+env.DEEPSEEK_API_KEY},body:JSON.stringify({model:'deepseek-chat',messages:[{role:'user',content:prompt}],temperature:0.3,max_tokens:12000})});
         if(!aiRes.ok){const e=await aiRes.text();return new Response(JSON.stringify({error:'AI失败:'+aiRes.status}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
@@ -340,7 +362,7 @@ export default {
         return new Response(JSON.stringify({success:true,data:{reportId:rid,fullContent:content,baziString:pillars.map(p=>p.gan+p.zhi).join(' '),dayGan:pillars[2].gan,dayWuxing:GAN_WUXING[pillars[2].gan]}}),{headers:{...cors,'Content-Type':'application/json'}});
       }catch(err){return new Response(JSON.stringify({error:err.message}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
     }
-    return new Response(JSON.stringify({status:'ok',version:'3.2'}),{headers:{...cors,'Content-Type':'application/json'}});
+    return new Response(JSON.stringify({status:'ok',version:'3.3'}),{headers:{...cors,'Content-Type':'application/json'}});
   }
 };
 
