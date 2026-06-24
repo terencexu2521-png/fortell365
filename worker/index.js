@@ -320,20 +320,17 @@ function buildOcrPrompt(imageBase64){
       content: [
         {
           type: 'text',
-          text: `你是一个八字排盘图片识别器。请仔细查看这张排盘截图，提取以下信息并以纯JSON格式返回（不要markdown、不要代码块、不要额外文字）：
+          text: `这是一张八字排盘表格的截图。表格有4列（年柱 月柱 日柱 时柱），2行数据（天干行、地支行）。
 
-{
-  "name": "姓名或昵称",
-  "baziString": "甲子 丙寅 戊辰 壬戌",
-  "gender": "male或female",
-  "source": "排盘工具名"
-}
+请按列提取天干和地支，返回纯JSON：
+{"baziString":"年干年支 月干月支 日干日支 时干时支"}
 
-规则：
-- baziString固定4组，每组2个汉字（天干+地支），空格分隔
-- 天干：甲乙丙丁戊己庚辛壬癸 | 地支：子丑寅卯辰巳午未申酉戌亥
-- 无姓名则name为""，无性别则gender为"unknown"
-- 只输出JSON，不要任何其他文字`
+例如表格是：
+天干 乙 乙 丁 丁
+地支 亥 酉 卯 未
+→ baziString: "乙亥 乙酉 丁卯 丁未"
+
+只输出JSON，不要任何其他文字。`
         },
         {
           type: 'image_url',
@@ -342,7 +339,7 @@ function buildOcrPrompt(imageBase64){
       ]
     }],
     temperature: 0.1,
-    max_tokens: 500
+    max_tokens: 300
   };
 }
 
