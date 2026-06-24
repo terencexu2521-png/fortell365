@@ -68,7 +68,8 @@ export default function GeneratePage() {
   const doOcr = async (file: File) => {
     setOcrProcessing(true)
     setStep('ocr')
-    toast.loading('正在识别排盘图片...', { id: 'ocr' })
+    const loadingToastId = 'ocr-loading'
+    toast.loading('AI 正在识别排盘图片...', { id: loadingToastId })
 
     try {
       // 读取为 base64
@@ -79,6 +80,8 @@ export default function GeneratePage() {
         r.readAsDataURL(file)
       })
 
+      console.log('[OCR] 发送请求, 图片大小:', base64.length, 'bytes')
+
       const resp = await fetch(`${API_URL}/ocr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,46 +89,90 @@ export default function GeneratePage() {
       })
 
       const data = await resp.json()
+      console.log('[OCR] 响应:', JSON.stringify(data).substring(0, 500))
 
       if (!resp.ok || !data.success) {
-        toast.error(data.error || 'OCR识别失败，请手动填写', { id: 'ocr' })
-        setOcrProcessing(false)
-        setStep('input')
+        toast.dismiss(loadingToastId)
+        toast.error(data.error || 'OCR识别失败，请手动填写')
         return
       }
 
       const result = data.data
-      toast.dismiss('ocr')
+      toast.dismiss(loadingToastId)
 
-      // 填充姓名
-      if (result.name) {
-        setName(result.name)
-        toast.success(`识别到姓名：${result.name}`, { duration: 2000 })
+      let foundItems: string[] = []
+      let missingItems: string[] = []
+
+      // 填充姓名（只要不是空字符串就填）
+      const ocrName = (result.name || '').trim()
+      if (ocrName) {
+        setName(ocrName)
+        foundItems.push(`姓名：${ocrName}`)
+        console.log('[OCR] 已填入姓名:', ocrName)
+      } else {
+        missingItems.push('姓名')
       }
 
       // 填充性别
-      if (result.gender === 'male' || result.gender === 'female') {
-        setGender(result.gender)
+      const ocrGender = result.gender || ''
+      if (ocrGender === 'male' || ocrGender === 'female') {
+        setGender(ocrGender)
+        foundItems.push(`性别：${ocrGender === 'male' ? '男' : '女'}`)
+        console.log('[OCR] 已填入性别:', ocrGender)
+      } else {
+        missingItems.push('性别')
       }
 
       // 填充八字
       if (result.pillars && result.pillars.length === 4) {
-        const newPillars = { ...pillars }
-        result.pillars.forEach((p: { gan: string; zhi: string }, i: number) => {
-          const key = PILLARS[i].key
-          newPillars[key] = { gan: p.gan, zhi: p.zhi }
-        })
-        setPillars(newPillars)
-        toast.success(`识别到八字：${result.baziString}`, { duration: 3000 })
-      } else if (result.needsManualCheck) {
-        toast.error('八字识别不完整，请手动核对补充', { id: 'ocr', duration: 4000 })
+        // 新增：校验每个pillar的gan和zhi是否合法
+        const validGans = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸']
+        const validZhis = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥']
+        const allValid = result.pillars.every(
+          (p: { gan: string; zhi: string }) =>
+            validGans.includes(p.gan) && validZhis.includes(p.zhi)
+        )
+
+        if (allValid) {
+          const newPillars: FormData = {
+            year: { gan: '', zhi: '' },
+            month: { gan: '', zhi: '' },
+            day: { gan: '', zhi: '' },
+            hour: { gan: '', zhi: '' },
+          }
+          result.pillars.forEach((p: { gan: string; zhi: string }, i: number) => {
+            const key = PILLARS[i].key
+            newPillars[key] = { gan: p.gan, zhi: p.zhi }
+          })
+          setPillars(newPillars)
+          foundItems.push(`八字：${result.baziString}`)
+          console.log('[OCR] 已填入八字:', result.baziString)
+        } else {
+          missingItems.push('八字（识别结果包含非法字符）')
+          toast.error('八字识别结果格式异常，请手动填写', { duration: 4000 })
+        }
       } else {
-        toast.error('未识别到八字信息，请手动填写', { id: 'ocr', duration: 4000 })
+        if (result.needsManualCheck) {
+          missingItems.push('八字（需手动核对）')
+          toast.error('八字识别不完整，请手动核对补充', { duration: 4000 })
+        } else {
+          missingItems.push('八字')
+          toast.error('未识别到八字信息，请手动填写', { duration: 4000 })
+        }
+      }
+
+      // 汇总提示
+      if (foundItems.length > 0) {
+        toast.success(`已自动填入：${foundItems.join('、')}`, { duration: 3000 })
+      }
+      if (missingItems.length > 0 && foundItems.length === 0) {
+        toast.error(`未识别到：${missingItems.join('、')}，请手动填写`, { duration: 5000 })
       }
 
     } catch (err: any) {
-      console.error('OCR error:', err)
-      toast.error('OCR服务异常，请手动填写', { id: 'ocr' })
+      console.error('[OCR] 异常:', err)
+      toast.dismiss(loadingToastId)
+      toast.error('OCR服务异常，请手动填写')
     } finally {
       setOcrProcessing(false)
       setStep('input')

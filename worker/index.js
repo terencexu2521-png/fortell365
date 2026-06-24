@@ -320,23 +320,20 @@ function buildOcrPrompt(imageBase64){
       content: [
         {
           type: 'text',
-          text: `请识别这张八字排盘图片中的以下信息，以JSON格式返回：
+          text: `你是一个八字排盘图片识别器。请仔细查看这张排盘截图，提取以下信息并以纯JSON格式返回（不要markdown、不要代码块、不要额外文字）：
 
-1. 姓名/昵称（如果有）
-2. 四柱八字：年柱、月柱、日柱、时柱（每柱包含天干和地支，如"甲子 丙寅 戊辰 壬戌"）
-3. 性别（如果图片中有标注）
-4. 排盘工具名称（如小巫排盘、问真八字等）
-
-注意：
-- 八字格式必须是四个柱，每个柱2个汉字（1天干+1地支），如"甲子 丙寅 戊辰 壬戌"
-- 如果图片中八字不完整或无法辨认，请标注缺失的字段
-- 请直接返回JSON，不要有其他文字：
 {
-  "name": "姓名",
+  "name": "姓名或昵称",
   "baziString": "甲子 丙寅 戊辰 壬戌",
-  "gender": "male/female/unknown",
-  "source": "排盘工具名/unknown"
-}`
+  "gender": "male或female",
+  "source": "排盘工具名"
+}
+
+规则：
+- baziString固定4组，每组2个汉字（天干+地支），空格分隔
+- 天干：甲乙丙丁戊己庚辛壬癸 | 地支：子丑寅卯辰巳午未申酉戌亥
+- 无姓名则name为""，无性别则gender为"unknown"
+- 只输出JSON，不要任何其他文字`
         },
         {
           type: 'image_url',
@@ -347,6 +344,24 @@ function buildOcrPrompt(imageBase64){
     temperature: 0.1,
     max_tokens: 500
   };
+}
+
+// 辅助函数：从原始文本中尝试提取八字（多种格式兜底）
+function tryExtractBazi(rawText){
+  const G='甲乙丙丁戊己庚辛壬癸', Z='子丑寅卯辰巳午未申酉戌亥';
+  // 方法1: 标准格式 "甲子 丙寅 戊辰 壬戌"
+  const m1=rawText.match(new RegExp(`([${G}][${Z}])\\s+([${G}][${Z}])\\s+([${G}][${Z}])\\s+([${G}][${Z}])`));
+  if(m1)return [m1[1],m1[2],m1[3],m1[4]].join(' ');
+  // 方法2: 无分隔 "甲子丙寅戊辰壬戌"
+  const m2=rawText.match(new RegExp(`([${G}][${Z}])([${G}][${Z}])([${G}][${Z}])([${G}][${Z}])`));
+  if(m2)return [m2[1],m2[2],m2[3],m2[4]].join(' ');
+  // 方法3: 逐个提取天干+地支对
+  const pairs=[], re=new RegExp(`([${G}])([${Z}])`,'g');
+  let m;
+  while((m=re.exec(rawText))!==null)pairs.push(m[1]+m[2]);
+  if(pairs.length>=4)return pairs.slice(-4).join(' ');
+  if(pairs.length===4)return pairs.join(' ');
+  return null;
 }
 
 // ============ 主 Worker 入口 ============
@@ -399,10 +414,13 @@ export default {
           }
         }
 
+        // 尝试用 tryExtractBazi 从 rawContent 提取八字（兜底）
+        const extractedBazi=tryExtractBazi(rawContent);
+
         if(parsed && parsed.baziString){
-          // 校验八字格式
+          // 方法A: 解析JSON中的baziString
           const baziParts=parsed.baziString.trim().split(/\s+/);
-          if(baziParts.length===4){
+          if(baziParts.length===4 && baziParts.every(p=>p.length===2)){
             const pillars=baziParts.map(p=>({gan:p.charAt(0),zhi:p.substring(1)}));
             return new Response(JSON.stringify({
               success:true,
@@ -412,22 +430,38 @@ export default {
                 baziString:parsed.baziString,
                 pillars,
                 source:parsed.source||'unknown',
-                rawContent
               }
             }),{headers:{...cors,'Content-Type':'application/json'}});
           }
         }
 
-        // 宽松模式：返回原始内容让前端处理
+        // 方法B: JSON解析失败或格式不对，用正则兜底提取
+        if(extractedBazi){
+          const parts=extractedBazi.split(' ');
+          if(parts.length===4){
+            const pillars=parts.map(p=>({gan:p.charAt(0),zhi:p.substring(1)}));
+            return new Response(JSON.stringify({
+              success:true,
+              data:{
+                name:parsed?.name||'',
+                gender:parsed?.gender||'',
+                baziString:extractedBazi,
+                pillars,
+                source:parsed?.source||'unknown',
+              }
+            }),{headers:{...cors,'Content-Type':'application/json'}});
+          }
+        }
+
+        // 方法C: 完全无法提取，返回原始数据让用户手动填写
         return new Response(JSON.stringify({
           success:true,
           data:{
             name:parsed?.name||'',
             gender:parsed?.gender||'',
-            baziString:parsed?.baziString||'',
+            baziString:parsed?.baziString||extractedBazi||'',
             pillars:null,
             source:parsed?.source||'unknown',
-            rawContent,
             needsManualCheck:true
           }
         }),{headers:{...cors,'Content-Type':'application/json'}});
