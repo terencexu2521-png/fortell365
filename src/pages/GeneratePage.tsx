@@ -53,36 +53,76 @@ function extractGenderFromText(rawText: string): 'male' | 'female' | null {
   return null
 }
 
-// 安全拆分一个八字柱对（如"乙亥"→ {gan:"乙", zhi:"亥"}），校验天干地支合法性
-function splitBaziPair(pair: string): { gan: string; zhi: string } | null {
-  const chars = [...pair.trim()]
-  if (chars.length >= 2 && TIAN_GAN.includes(chars[0]) && DI_ZHI.includes(chars[1])) {
-    return { gan: chars[0], zhi: chars[1] }
-  }
-  return null
-}
-
-// 从图片裁剪出八字表格区域（排盘截图中部 25%~50%）
-async function cropToBaziTable(file: File): Promise<Blob> {
+// 裁剪+拆分成天干行/地支行，分别OCR识别
+async function cropAndSplitBaziTable(file: File): Promise<{ ganBlob: Blob; zhiBlob: Blob }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
       const canvas = document.createElement('canvas')
-      // 八字表格在排盘截图中部（约20%~55%处），裁剪这个区域排除顶部姓名区和底部提示区
+      // 1. 先裁剪到表格大区（20%~55%）
       const cropY = Math.round(img.height * 0.20)
       const cropH = Math.round(img.height * 0.35)
-      canvas.width = img.width
+      const fullW = img.width
+      canvas.width = fullW
       canvas.height = cropH
       const ctx = canvas.getContext('2d')!
-      ctx.drawImage(img, 0, cropY, img.width, cropH, 0, 0, img.width, cropH)
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob)
-        else reject(new Error('Canvas裁剪失败'))
+      ctx.drawImage(img, 0, cropY, fullW, cropH, 0, 0, fullW, cropH)
+
+      // 2. 从裁剪区切出上半张（天干行）和下半张（地支行）
+      // 表格第一行是表头(日期/年柱/月柱/日柱/时柱)、第二行是主星、第三行天干、第四行地支
+      // 天干行大约在裁剪区的55%~72%，地支行大约在72%~90%
+      const topY = Math.round(cropH * 0.50)  // 跳过表头行
+      const rowH = Math.round(cropH * 0.25)  // 每行高度
+
+      // 天干行 canvas
+      const ganCanvas = document.createElement('canvas')
+      ganCanvas.width = fullW
+      ganCanvas.height = rowH
+      const ganCtx = ganCanvas.getContext('2d')!
+      ganCtx.drawImage(canvas, 0, topY, fullW, rowH, 0, 0, fullW, rowH)
+
+      // 地支行 canvas
+      const zhiCanvas = document.createElement('canvas')
+      zhiCanvas.width = fullW
+      zhiCanvas.height = rowH
+      const zhiCtx = zhiCanvas.getContext('2d')!
+      zhiCtx.drawImage(canvas, 0, topY + rowH, fullW, rowH, 0, 0, fullW, rowH)
+
+      // 同时输出两个blob
+      ganCanvas.toBlob((ganBlob) => {
+        if (!ganBlob) { reject(new Error('天干行裁剪失败')); return }
+        zhiCanvas.toBlob((zhiBlob) => {
+          if (!zhiBlob) { reject(new Error('地支行裁剪失败')); return }
+          resolve({ ganBlob, zhiBlob })
+        }, 'image/png')
       }, 'image/png')
     }
     img.onerror = () => reject(new Error('图片加载失败'))
     img.src = URL.createObjectURL(file)
   })
+}
+
+// 从OCR文本中提取字符（只保留合法天干或地支，去重取前4个）
+function extractChars(text: string, charSet: string[]): string[] {
+  const result: string[] = []
+  const compact = text.replace(/\s+/g, '')
+  for (const ch of compact) {
+    if (charSet.includes(ch) && !result.includes(ch)) {
+      result.push(ch)
+      if (result.length === 4) break
+    }
+  }
+  // 如果去重不够4个（有重复字符），允许重复
+  if (result.length < 4) {
+    result.length = 0
+    for (const ch of compact) {
+      if (charSet.includes(ch)) {
+        result.push(ch)
+        if (result.length === 4) break
+      }
+    }
+  }
+  return result
 }
 
 const PILLARS = [
@@ -150,53 +190,72 @@ export default function GeneratePage() {
     toast.loading('正在加载识别引擎...', { id: loadingToastId })
 
     try {
-      // 第一步：裁剪到八字表格区域，提高识别精度
-      const croppedBlob = await cropToBaziTable(file)
+      const foundItems: string[] = []
+      // 第一步：裁剪到表格区并分离天干行/地支行
+      const { ganBlob, zhiBlob } = await cropAndSplitBaziTable(file)
+      console.log('[OCR] 裁剪完成: ganBlob', ganBlob.size, 'zhiBlob', zhiBlob.size)
 
-      console.log('[OCR] 裁剪完成, cropped size:', croppedBlob.size)
-
-      // 第二步：Tesseract.js 浏览器端 OCR
-      const { data: { text } } = await Tesseract.recognize(croppedBlob, 'chi_sim', {
+      // 第二步：分别OCR天干行和地支行（每行只含一种字符，杜绝混排）
+      toast.loading('识别天干行...', { id: loadingToastId })
+      const { data: { text: ganText } } = await Tesseract.recognize(ganBlob, 'chi_sim', {
         workerPath: '/tesseract/worker.min.js',
         langPath: '/tesseract',
-        logger: (info) => {
-          console.log('[OCR] status:', info.status, info.progress)
-          if (info.status === 'recognizing text') {
-            const pct = Math.round((info.progress || 0) * 100)
-            toast.loading(`AI识别中 ${pct}%...`, { id: loadingToastId })
-          } else if (info.status === 'loading language traineddata') {
-            const pct = Math.round((info.progress || 0) * 100)
-            toast.loading(`加载中文引擎 ${pct}%...`, { id: loadingToastId })
-          }
-        },
       })
+      console.log('[OCR] 天干行:', ganText)
 
-      console.log('[OCR] 裁剪区识别完成:', text.substring(0, 300))
+      toast.loading('识别地支行...', { id: loadingToastId })
+      const { data: { text: zhiText } } = await Tesseract.recognize(zhiBlob, 'chi_sim', {
+        workerPath: '/tesseract/worker.min.js',
+        langPath: '/tesseract',
+      })
+      console.log('[OCR] 地支行:', zhiText)
       toast.dismiss(loadingToastId)
 
-      if (!text || text.trim().length < 4) {
-        toast.error('图片中未识别到文字，请确保图片清晰')
-        return
-      }
+      // 第三步：从各行提取合法字符
+      const gans = extractChars(ganText, TIAN_GAN)
+      const zhis = extractChars(zhiText, DI_ZHI)
+      console.log('[OCR] 提取天干:', gans, '地支:', zhis)
 
-      const foundItems: string[] = []
-
-      // 1. 从裁剪区提取八字（用splitBaziPair确保天干/地支各入其位）
-      const baziStr = extractBaziFromTable(text)
-      if (baziStr) {
-        const pairs = baziStr.split(' ')
-        if (pairs.length === 4) {
-          const parsed = pairs.map(splitBaziPair)
-          if (parsed.every((p): p is {gan:string;zhi:string} => p !== null)) {
-            setPillars({
-              year: { gan: parsed[0].gan, zhi: parsed[0].zhi },
-              month: { gan: parsed[1].gan, zhi: parsed[1].zhi },
-              day: { gan: parsed[2].gan, zhi: parsed[2].zhi },
-              hour: { gan: parsed[3].gan, zhi: parsed[3].zhi },
+      if (gans.length === 4 && zhis.length === 4) {
+        setPillars({
+          year: { gan: gans[0], zhi: zhis[0] },
+          month: { gan: gans[1], zhi: zhis[1] },
+          day: { gan: gans[2], zhi: zhis[2] },
+          hour: { gan: gans[3], zhi: zhis[3] },
+        })
+        const baziStr = `${gans[0]}${zhis[0]} ${gans[1]}${zhis[1]} ${gans[2]}${zhis[2]} ${gans[3]}${zhis[3]}`
+        foundItems.push('八字：' + baziStr)
+        console.log('[OCR] ✅ 八字已填入:', baziStr)
+      } else {
+        console.warn('[OCR] ⚠️ 提取不全, 天干:', gans.length, '地支:', zhis.length)
+        // 兜底：用旧的全文提取法
+        const allText = ganText + ' ' + zhiText
+        const fallbackBazi = extractBaziFromTable(allText)
+        if (fallbackBazi) {
+          const pairs = fallbackBazi.split(' ')
+          if (pairs.length === 4) {
+            // 手动拆分每个pair
+            const parsed = pairs.map(p => {
+              const chars = [...p.trim()]
+              if (chars.length >= 2 && TIAN_GAN.includes(chars[0]) && DI_ZHI.includes(chars[1])) {
+                return { gan: chars[0], zhi: chars[1] }
+              }
+              return null
             })
-            foundItems.push('八字：' + baziStr)
-            console.log('[OCR] ✅ 八字已填入, 年柱:', pairs[0], '→ gan:', parsed[0].gan, 'zhi:', parsed[0].zhi)
+            if (parsed.every(p => p !== null)) {
+              setPillars({
+                year: { gan: parsed[0]!.gan, zhi: parsed[0]!.zhi },
+                month: { gan: parsed[1]!.gan, zhi: parsed[1]!.zhi },
+                day: { gan: parsed[2]!.gan, zhi: parsed[2]!.zhi },
+                hour: { gan: parsed[3]!.gan, zhi: parsed[3]!.zhi },
+              })
+              foundItems.push('八字：' + fallbackBazi)
+              console.log('[OCR] ⚠️ 兜底八字:', fallbackBazi, '(请核对)')
+            }
           }
+        }
+        if (!foundItems.some(f => f.startsWith('八字'))) {
+          toast.error('未识别到完整八字，请手动填写', { duration: 4000 })
         }
       }
 
