@@ -68,9 +68,9 @@ async function cropToBaziTable(file: File): Promise<Blob> {
     const img = new Image()
     img.onload = () => {
       const canvas = document.createElement('canvas')
-      // 八字表格在屏幕中上部（约25%~50%处），只裁剪这个区域提高识别精度
-      const cropY = Math.round(img.height * 0.25)
-      const cropH = Math.round(img.height * 0.20)
+      // 八字表格在排盘截图中部（约20%~55%处），裁剪这个区域排除顶部姓名区和底部提示区
+      const cropY = Math.round(img.height * 0.20)
+      const cropH = Math.round(img.height * 0.35)
       canvas.width = img.width
       canvas.height = cropH
       const ctx = canvas.getContext('2d')!
@@ -219,9 +219,10 @@ export default function GeneratePage() {
         foundItems.push('姓名：' + ocrName)
       }
 
-      // 3. 如果裁剪区八字提取失败，用全文兜底
+      // 3. 裁剪区提取失败才用全文兜底（全文有"(乙酉)属猪"等污染，仅作最后手段）
       if (!baziStr) {
-        console.log('[OCR] 兜底: 全文OCR提取八字...')
+        console.log('[OCR] ⚠️ 裁剪区未识别到八字，尝试全文...')
+        // 全文OCR已在上一步完成，直接复用 fullText
         const fallbackBazi = extractBaziFromTable(fullText)
         if (fallbackBazi) {
           const pairs = fallbackBazi.split(' ')
@@ -235,9 +236,13 @@ export default function GeneratePage() {
                 hour: { gan: parsed[3].gan, zhi: parsed[3].zhi },
               })
               foundItems.push('八字：' + fallbackBazi)
-              console.log('[OCR] ✅ 兜底八字已填入:', fallbackBazi)
+              console.log('[OCR] ⚠️ 使用全文兜底八字(请人工核对):', fallbackBazi)
+              toast.error('八字识别可能不准确，请核对', { duration: 4000 })
             }
           }
+        }
+        if (!foundItems.some(f => f.startsWith('八字'))) {
+          toast.error('未识别到八字，请手动填写', { duration: 4000 })
         }
       }
 
