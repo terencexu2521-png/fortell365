@@ -1,0 +1,35 @@
+name: SEO Generator
+permissions:
+  contents: write
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - run: |
+        echo "开始生成文章"
+        mkdir -p public/seo
+        
+        # 生成10篇简单文章（先测试功能）
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          echo "<!DOCTYPE html><html><head><title>文章$i</title></head><body><h1>Fortell365文章$i</h1><p>专业命理分析</p></body></html>" > "public/seo/article-$i.html"
+          echo "生成文章$i"
+        done
+        
+        echo "生成完成！"
+        
+    - run: |
+        git config user.name "Bot"
+        git config user.email "bot@example.com"
+        git add public/seo/
+        git commit -m "生成10篇文章"
+        git push origin main || echo "推送失败"
+        
+        echo "完成！"
