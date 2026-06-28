@@ -233,7 +233,7 @@ export default function GeneratePage() {
       <div className="max-w-xl mx-auto px-4 py-6">
         <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-5">
           <p className="text-sm text-indigo-700 leading-relaxed">
-            填写出生日期、时间与地点，系统将<strong>自动排盘</strong>生成四柱，无需上传截图或 OCR。
+            请填写个人信息，系统根据数据库自动排盘生成四柱
           </p>
         </div>
 
@@ -355,7 +355,7 @@ export default function GeneratePage() {
           </button>
 
           <p className="text-center text-xs text-slate-400">
-            免费预览前 5 模块 · 后 5 模块 ¥19.90 解锁 · 登录后自动保存
+            免费预览前 5 模块 · 后 5 模块付费解锁 · 登录后自动保存
           </p>
         </div>
       </div>

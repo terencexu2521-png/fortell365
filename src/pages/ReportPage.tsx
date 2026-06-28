@@ -194,7 +194,7 @@ export default function ReportPage() {
   const renderContent = (content: string | undefined) => {
     if (!content) return null
     return content.split('\n').map((line, i) => {
-      if (line.match(/^## 模块[一二三四五六七八九十\d]+/))
+      if (line.match(/^## /))
         return <h2 key={i} className="text-xl font-bold text-slate-900 mt-6 mb-3 border-l-4 border-purple-500 pl-3 py-1">{line.replace(/^## /, '')}</h2>
       if (line.startsWith('### '))
         return <h3 key={i} className={`text-base font-semibold mt-5 mb-2 ${line.includes('专业分析') ? 'text-amber-700' : line.includes('白话解读') ? 'text-purple-700' : 'text-slate-800'}`}>{line.replace('### ', '')}</h3>
@@ -220,6 +220,7 @@ export default function ReportPage() {
   const displayContent = getDisplayContent(report.fullContent, isUnlocked)
   const isFreePeriod = pricing?.isFreePeriod ?? false
   const qrUrl = pricing?.alipayQrUrl || ALIPAY_QR
+  const priceYuan = pricing?.priceYuan || '0.10'
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -79,11 +79,11 @@ export default function HomePage() {
             <div className="flex-1 min-w-0">
               <h3 className="text-lg font-semibold text-slate-900">开始专业/职业探索</h3>
               <p className="text-slate-500 text-sm">
-                免费预览 5 模块 · 后 5 模块 ¥19.90 解锁 · 登录后保存
+                日主五行 → 性格底色 · 十神组合 → 天赋领域 · 八步大运 → 人生节奏
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">5 模块免费</span>
+              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">免费</span>
               <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-purple-500 transition" />
             </div>
           </Link>
@@ -91,7 +91,7 @@ export default function HomePage() {
           {/* Value proposition — v3 扩展版 */}
           <div className="mt-6 p-4 bg-slate-50 rounded-xl">
             <p className="text-center text-sm text-slate-500 mb-1">
-              <span className="font-medium text-slate-700">10 大模块报告 · 前 5 免费 · 后 5 付费解锁</span>
+              <span className="font-medium text-slate-700">10大模块报告，纵览人生</span>
             </p>
             <p className="text-center text-xs text-slate-400 mb-3">注册登录后，报告自动保存到「我的报告」</p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
