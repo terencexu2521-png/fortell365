@@ -1,0 +1,17 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/input/input",
+    "pages/confirm/confirm",
+    "pages/report/report",
+    "pages/profile/profile"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#2d1b4e",
+    "navigationBarTitleText": "国学智慧·专业/职业探索",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#faf8ff"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

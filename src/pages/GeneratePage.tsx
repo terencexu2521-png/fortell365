@@ -2,16 +2,18 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Sparkles, Loader2, ArrowLeft, Upload, Camera, ScanLine } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useAuth } from '../lib/auth'
 import { createWorker, type Worker } from 'tesseract.js'
 import {
   TIAN_GAN,
   DI_ZHI,
   TESSERACT_OPTS,
   cropTableArea,
+  cropColoredGanRowBand,
   compressImageForOcr,
   extractZhisFromLabels,
-  inferGansFromShiShenRow,
   resolveGans,
+  parseGansFromOcrText,
   extractGansFromCangGan,
   extractGansFromLabels,
   extractBaziFromGanZhiLabels,
@@ -30,6 +32,7 @@ import {
 const API_URL = 'https://fortell365-api.terencexu2521.workers.dev'
 
 const CROP_REGIONS: [number, number][] = [[0.20, 0.55], [0.15, 0.50], [0.25, 0.60], [0.10, 0.65]]
+const COLORED_GAN_BANDS: [number, number][] = [[0.18, 0.52], [0.15, 0.55], [0.22, 0.58], [0.10, 0.48]]
 
 let ocrWorker: Worker | null = null
 let ocrProgressCb: ((pct: number) => void) | null = null
@@ -135,6 +138,7 @@ type FormData = Record<PillarKey, { gan: string; zhi: string }>
 
 export default function GeneratePage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 表单记忆：localStorage 自动保存，刷新不丢
@@ -222,16 +226,35 @@ export default function GeneratePage() {
         console.warn('[OCR] 本地 Tesseract 不可用（检查 public/tesseract/）:', localErr)
       }
 
-      // 步骤4：提取地支行 → AI 只纠正天干
+      // 步骤3.5：彩色天干行 OCR（时间局表格第一行大字 = 天干）
+      let coloredGans: string[] | null = null
+      try {
+        for (const [yStart, yEnd] of COLORED_GAN_BANDS) {
+          const band = await cropColoredGanRowBand(compressed, yStart, yEnd)
+          if (!band) continue
+          showProgress('识别彩色天干行...')
+          const ganText = await recognizeWithTesseract(band, (pct) => showProgress(`天干行 ${pct}%...`))
+          const parsed = parseGansFromOcrText(ganText)
+          if (parsed?.length === 4) {
+            coloredGans = parsed
+            console.log('[OCR] 彩色天干行:', coloredGans.join('、'))
+            break
+          }
+        }
+      } catch (e) {
+        console.warn('[OCR] 彩色天干行识别失败:', e)
+      }
+
+      // 步骤4：提取地支行 → 优先彩色天干 / 结构天干行
       const knownZhi = extractZhisFromLabels(ocrText)
       if (knownZhi) console.log('[OCR] 地支行识别:', knownZhi.join('、'))
-      const ruleGans = resolveGans(ocrText, knownZhi)
+      const ruleGans = resolveGans(ocrText, knownZhi, coloredGans)
       const knownGans = ruleGans || extractGansFromCangGan(ocrText) || extractGansFromLabels(ocrText)
       if (knownGans) console.log('[OCR] 天干推断:', knownGans.join('、'))
       const ruleBazi = knownZhi && ruleGans ? pillarsFromGansZhi(ruleGans, knownZhi) : null
-      if (ruleBazi) console.log('[OCR] ✅ 十神反推八字:', Object.values(ruleBazi).map((p) => p.gan + p.zhi).join(' '))
+      if (ruleBazi) console.log('[OCR] ✅ 天干识别八字:', Object.values(ruleBazi).map((p) => p.gan + p.zhi).join(' '))
 
-      showProgress(ruleBazi ? '十神反推完成...' : 'AI 解析排盘文字...')
+      showProgress(ruleBazi ? '天干识别完成...' : 'AI 解析排盘文字...')
       const aiResult = ruleBazi
         ? { pillars: ruleBazi, name: localName, gender: localGender as 'male' | 'female' | '', fromRule: true as const }
         : await tryDeepSeekOcr(dataUrl, prepareOcrTextForAi(ocrText, knownZhi, knownGans), knownZhi, knownGans)
@@ -272,7 +295,9 @@ export default function GeneratePage() {
     setStep('loading')
     try {
       const body = { fortuneType: 'bazi', productType: 'main', name: name.trim(), gender, baziString: buildBaziString(), pillars }
-      const response = await fetch(API_URL + '/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (user) headers.Authorization = 'Bearer ' + user.token
+      const response = await fetch(API_URL + '/generate', { method: 'POST', headers, body: JSON.stringify(body) })
       if (!response.ok) { const errText = await response.text(); throw new Error(`生成失败 (${response.status})`) }
       const data = await response.json()
       const reportId = data?.data?.reportId
@@ -425,13 +450,12 @@ export default function GeneratePage() {
 
           <button onClick={handleSubmit} disabled={!isBaziComplete() || !name.trim() || !gender}
             className="w-full mt-6 h-14 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold text-lg hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed">
-            免费生成完整命理报告
+            生成命理报告
           </button>
 
           <p className="text-center text-xs text-slate-400 mt-4">
-            免费查看10大模块完整命理解读<br />
-            含：命盘分析 · 性格DNA · 五行格局 · 人生各阶段详解 · 当前运势<br />
-            <span className="text-purple-500">专业推荐 & 职业规划 需解锁完整版</span>
+            免费预览前5模块 · 完整10模块 ¥19.90<br />
+            限时免费至2026年7月31日 · 登录后可保存到账户
           </p>
         </div>
       </div>

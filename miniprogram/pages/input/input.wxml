@@ -1,0 +1,67 @@
+<view class="container">
+  <view class="card form-head">
+    <view class="title">填写文化档案信息</view>
+    <view class="subtitle">出生时间精确到分钟，地点精确到区，时柱更准确</view>
+  </view>
+
+  <view class="card">
+    <view class="field">
+      <view class="label">姓名</view>
+      <input class="field-input" placeholder="请输入姓名" value="{{name}}" bindinput="onNameInput" />
+    </view>
+
+    <view class="field">
+      <view class="label">性别</view>
+      <radio-group class="radio-row" bindchange="onGenderChange">
+        <label class="radio-item"><radio value="male" checked="{{gender==='male'}}" color="#8b5cf6" /> 男</label>
+        <label class="radio-item"><radio value="female" checked="{{gender==='female'}}" color="#8b5cf6" /> 女</label>
+      </radio-group>
+    </view>
+
+    <view class="field">
+      <view class="label">历法</view>
+      <picker mode="selector" range="{{calendarTypes}}" range-key="label" value="{{calendarIndex}}" bindchange="onCalendarChange">
+        <view class="picker-box">{{calendarTypes[calendarIndex].label}}</view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <view class="label">出生日期</view>
+      <picker mode="date" value="{{date}}" start="1920-01-01" end="2025-12-31" bindchange="onDateChange">
+        <view class="picker-box">{{date}}</view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <view class="label">出生时间</view>
+      <picker mode="time" value="{{time}}" bindchange="onTimeChange">
+        <view class="picker-box">{{time}} <text class="picker-hint">（精确到分钟）</text></view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <view class="label">出生省份</view>
+      <picker mode="selector" range="{{provinces}}" value="{{provinceIndex}}" bindchange="onProvinceChange">
+        <view class="picker-box">{{provinces[provinceIndex]}}</view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <view class="label">出生城市</view>
+      <picker mode="selector" range="{{cities}}" value="{{cityIndex}}" bindchange="onCityChange">
+        <view class="picker-box">{{cities[cityIndex]}}</view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <view class="label">出生区县</view>
+      <picker mode="selector" range="{{districts}}" value="{{districtIndex}}" bindchange="onDistrictChange">
+        <view class="picker-box">{{districts[districtIndex]}}</view>
+      </picker>
+    </view>
+
+    <view class="location-tip">真太阳时经度：{{longitude}}° · {{birthPlace}}</view>
+  </view>
+
+  <button class="btn-primary" bindtap="submitForm" loading="{{loading}}" disabled="{{loading}}">计算四柱信息</button>
+</view>

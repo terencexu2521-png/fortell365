@@ -181,17 +181,30 @@ function extractHeaderGanHint(text: string): string | null {
   return m ? m[1] : null
 }
 
-/** 统计 OCR 全文出现的天干（作候选消歧） */
+/** 统计 OCR 全文出现的天干（作候选消歧）；跳过「己 土 / 庚 金」等五行标注行 */
 function extractGanFreqFromText(text: string): Map<string, number> {
   const freq = new Map<string, number>()
   for (const line of text.split('\n')) {
-    if (/提\s*示|笔\s*记|节\s*气|农\s*历|属\s/.test(line)) continue
-    for (const ch of line.replace(/[^\u4e00-\u9fff]/g, '')) {
+    if (/提\s*示|笔\s*记|节\s*气|农\s*历|属\s|藏\s*干|副\s*星/.test(line)) continue
+    const compact = line.replace(/\s+/g, '')
+    if (/[甲乙丙丁戊己庚辛壬癸][金木水火土]/.test(compact)) continue
+    for (const ch of line.replace(/[^\u4e00-\u9fffA-Za-z]/g, '')) {
       const f = fixGanChar(ch)
       if (f && G.includes(f)) freq.set(f, (freq.get(f) || 0) + 1)
     }
   }
   return freq
+}
+
+/** 无「天干提示」行时，从藏干区提取 壬/丁 等 loose hint（许为杰类：王水 + 丁火） */
+function extractLooseStemHints(text: string): string[] | null {
+  const fromCombine = extractGanCombineHint(text)
+  if (fromCombine) return fromCombine
+  const hints: string[] = []
+  if (/王\s*水|\b王\b/.test(text) && /藏\s*干/.test(text)) hints.push('壬')
+  if (/丁\s*火/.test(text)) hints.push('丁')
+  if (/辛\s*金|平\s*金|年\s*金/.test(text)) hints.push('辛')
+  return hints.length >= 2 ? hints : null
 }
 
 export function extractGansFromLineAboveZhi(text: string): string[] | null {
@@ -233,6 +246,144 @@ export function extractGanCombineHint(text: string): string[] | null {
     if (f && G.includes(f) && !gans.includes(f)) gans.push(f)
   }
   return gans.length >= 2 ? gans : null
+}
+
+/** 主星行与地支行之间的彩色天干行（时间局：主星 → 天干 → 地支） */
+export function extractGansFromStemRow(text: string): string[] | null {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+  let starIdx = -1
+  let zhiIdx = -1
+  let bestZhiCount = 0
+  for (let i = 0; i < lines.length; i++) {
+    if (starIdx < 0 && /主\s*星/.test(lines[i])) starIdx = i
+    if (!ZHI_ROW_RE.test(lines[i]) || /提\s*示|相\s*冲|半\s*合/.test(lines[i])) continue
+    const zhis = extractCharsFromSegment(lines[i].replace(ZHI_ROW_STRIP, ''), fixZhiChar, Z)
+    if (zhis.length >= 3 && zhis.length >= bestZhiCount) {
+      bestZhiCount = zhis.length
+      zhiIdx = i
+    }
+  }
+  if (starIdx < 0 || zhiIdx <= starIdx) return null
+  for (let i = starIdx + 1; i < zhiIdx; i++) {
+    const line = lines[i]
+    if (/藏\s*干|提\s*示|副\s*星|五\s*行|主\s*星|日\s*期|年\s*柱/.test(line)) continue
+    if (/天\s*干|大\s*干/.test(line)) {
+      const seg = line.replace(/^[\s\S]*?(?:天|大)\s*干[：:\s]*/u, '')
+      const gans = extractCharsFromSegment(seg, fixGanChar, G)
+      if (gans.length === 4) return gans
+    }
+    if (/[甲乙丙丁戊己庚辛壬癸][金木水火土]/.test(line.replace(/\s/g, ''))) continue
+    const gans = extractCharsFromSegment(line, fixGanChar, G)
+    if (gans.length === 4) return gans
+  }
+  return null
+}
+
+/** 从 OCR 文本中提取恰好 4 个天干（彩色天干行专用） */
+export function parseGansFromOcrText(text: string): string[] | null {
+  let best: string[] = []
+  for (const line of text.split('\n')) {
+    const gans = extractCharsFromSegment(line, fixGanChar, G)
+    if (gans.length === 4) return gans
+    if (gans.length > best.length) best = gans
+  }
+  const all = extractCharsFromSegment(text, fixGanChar, G)
+  if (all.length === 4) return all
+  return best.length === 4 ? best : null
+}
+
+function isColoredStemPixel(r: number, g: number, b: number): boolean {
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  if (max < 45) return false
+  const sat = max === 0 ? 0 : (max - min) / max
+  if (sat < 0.1 && max > 175) return false
+  return sat > 0.1 && max - min > 16
+}
+
+/** 裁剪表格区中「第一行彩色字」= 天干行，白底黑字便于 OCR */
+export async function cropColoredGanRowBand(
+  file: Blob | File,
+  yStart = 0.18,
+  yEnd = 0.52,
+): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(img.src)
+      const W = img.width
+      const H = img.height
+      const cropY = Math.round(H * yStart)
+      const cropH = Math.round(H * (yEnd - yStart))
+      const scale = W < 1400 ? 2 : 1
+      const cw = W * scale
+      const ch = cropH * scale
+      const canvas = document.createElement('canvas')
+      canvas.width = cw
+      canvas.height = ch
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, cropY, W, cropH, 0, 0, cw, ch)
+      const imgData = ctx.getImageData(0, 0, cw, ch)
+      const d = imgData.data
+      const stripH = Math.max(6, Math.floor(ch / 24))
+      const strips: { y: number; count: number }[] = []
+      for (let y = 0; y < ch; y += stripH) {
+        let count = 0
+        for (let yy = y; yy < Math.min(y + stripH, ch); yy++) {
+          for (let x = 0; x < cw; x++) {
+            const i = (yy * cw + x) * 4
+            if (isColoredStemPixel(d[i], d[i + 1], d[i + 2])) count++
+          }
+        }
+        strips.push({ y, count })
+      }
+      const maxCount = Math.max(...strips.map((s) => s.count), 0)
+      if (maxCount < 15) {
+        resolve(null)
+        return
+      }
+      const threshold = maxCount * 0.3
+      let peakY = -1
+      for (let i = 0; i < strips.length; i++) {
+        if (strips[i].count < threshold) continue
+        const isPeak = (i === 0 || strips[i].count >= strips[i - 1].count)
+          && (i === strips.length - 1 || strips[i].count >= strips[i + 1].count)
+        if (isPeak) {
+          peakY = strips[i].y
+          break
+        }
+      }
+      if (peakY < 0) {
+        const upper = strips.filter((s) => s.y < ch * 0.62).sort((a, b) => b.count - a.count)[0]
+        peakY = upper?.y ?? -1
+      }
+      if (peakY < 0) {
+        resolve(null)
+        return
+      }
+      const bandTop = Math.max(0, peakY - stripH)
+      const bandBottom = Math.min(ch, peakY + stripH * 2)
+      const bandH = bandBottom - bandTop
+      const out = document.createElement('canvas')
+      out.width = cw
+      out.height = bandH
+      const octx = out.getContext('2d')!
+      octx.fillStyle = '#ffffff'
+      octx.fillRect(0, 0, cw, bandH)
+      for (let yy = 0; yy < bandH; yy++) {
+        for (let x = 0; x < cw; x++) {
+          const si = ((bandTop + yy) * cw + x) * 4
+          if (isColoredStemPixel(d[si], d[si + 1], d[si + 2])) {
+            octx.fillStyle = '#000000'
+            octx.fillRect(x, yy, 1, 1)
+          }
+        }
+      }
+      out.toBlob((b) => resolve(b), 'image/png')
+    }
+    img.onerror = () => resolve(null)
+    img.src = URL.createObjectURL(file)
+  })
 }
 
 /** 从「天干/大干」行提取（噪声大，作 hint；3 个也保留） */
@@ -289,7 +440,8 @@ export function inferGansFromShiShenRow(text: string, knownZhi?: string[] | null
   if (candidates.length === 1) return candidates[0]
 
   const labelGans = extractGansFromLabels(text) || extractGansFromLineAboveZhi(text)
-  const ganTip = extractGanCombineHint(text)
+  const ganTip = extractLooseStemHints(text)
+  const cangGan = extractGansFromCangGan(text)
   const ganFreq = extractGanFreqFromText(text)
   const headerGan = extractHeaderGanHint(text)
 
@@ -302,12 +454,21 @@ export function inferGansFromShiShenRow(text: string, knownZhi?: string[] | null
         if (labelGans[i] && gans[i] === labelGans[i]) score += 4
       }
     }
-    if (ganTip) {
-      if (ganTip.includes(gans[2])) score += 14
-      if (ganTip.includes(gans[3])) score += 10
-      if (ganTip.includes(gans[1])) score += 8
-      if (ganTip.includes(gans[0])) score += 6
+    if (cangGan) {
+      for (let i = 0; i < Math.min(4, cangGan.length); i++) {
+        if (cangGan[i] && gans[i] === cangGan[i]) score += 8
+      }
     }
+    if (ganTip) {
+      if (ganTip.includes(gans[2])) score += 20
+      if (ganTip.includes(gans[3])) score += 16
+      if (ganTip.includes(gans[1])) score += 8
+      if (ganTip.includes(gans[0])) score += 8
+    }
+    if (labels[0] === labels[1] && labels[0] !== '日元' && gans[0] === gans[1]) score += 10
+    if (/王/.test(text) && gans[2] === '壬') score += 22
+    if (/丁\s*火/.test(text) && gans[3] === '丁') score += 22
+    if (/辛\s*金|平\s*金/.test(text) && gans[0] === '辛') score += 12
     for (const g of gans) score += (ganFreq.get(g) || 0) * 2
     return score
   }
@@ -317,34 +478,39 @@ export function inferGansFromShiShenRow(text: string, knownZhi?: string[] | null
   return scored[0].gans
 }
 
-/** 解析四柱天干：优先地支行上一行（上下对齐），与十神反推一致时采用；主星「日元」位永远以十神反推为准 */
-export function resolveGans(text: string, knownZhi?: string[] | null): string[] | null {
-  const direct = extractGansFromLineAboveZhi(text)
-  const inferred = inferGansFromShiShenRow(text, knownZhi)
-  const row = extractShiShenRow(text)
-  // 主星行存在 → 日柱必为日元（结构约束，不依赖 OCR 是否读对「日元」二字）
-  const dayIsYuan = !!(row && row.length >= 4)
-
-  let result: string[] | null = null
-
-  if (direct?.length === 4 && inferred?.length === 4) {
-    const matches = direct.filter((g, i) => g === inferred[i]).length
-    result = (matches >= 3 ? direct : inferred).slice()
-  } else if (direct?.length === 3 && inferred?.length === 4) {
-    result = inferred.slice()
-    for (let i = 0; i < 3; i++) {
-      if (direct[i] && direct[i] === inferred[i]) result[i] = direct[i]
+/** 解析四柱天干：优先彩色天干行 / 主星下地支行，十神反推仅兜底 */
+export function resolveGans(
+  text: string,
+  knownZhi?: string[] | null,
+  coloredGansHint?: string[] | null,
+): string[] | null {
+  if (coloredGansHint?.length === 4 && coloredGansHint.every((g) => G.includes(g))) {
+    return coloredGansHint.slice()
+  }
+  const stemRow = extractGansFromStemRow(text)
+  if (stemRow?.length === 4) {
+    const inferred = inferGansFromShiShenRow(text, knownZhi)
+    const row = extractShiShenRow(text)
+    if (inferred?.length === 4 && row?.length >= 4) {
+      const labels = row.slice(0, 4).map(normalizeShiShenLabel)
+      labels[2] = '日元'
+      const dayGan = inferred[2]
+      const fixed = stemRow.slice()
+      fixed[2] = dayGan
+      const stemMatches = labels.every((ss, i) => {
+        if (i === 2) return true
+        if (ss === '比肩') return fixed[i] === dayGan
+        return getShiShen(dayGan, fixed[i]!) === ss
+      })
+      return stemMatches ? fixed : inferred
     }
-  } else {
-    result = (inferred || direct || extractGansFromLabels(text))?.slice() ?? null
+    return stemRow
   }
-
-  // 日柱天干 = 日主：OCR 在此处误识率最高，有十神反推结果时无条件采用
-  if (result && inferred?.length === 4 && dayIsYuan) {
-    result[2] = inferred[2]
-  }
-
-  return result
+  const labeled = extractGansFromLabels(text)
+  if (labeled?.length === 4) return labeled
+  const aboveZhi = extractGansFromLineAboveZhi(text)
+  if (aboveZhi?.length === 4) return aboveZhi
+  return inferGansFromShiShenRow(text, knownZhi)
 }
 
 export function pillarsFromGansZhi(gans: string[], zhis: string[]): Pillars | null {

@@ -1,6 +1,13 @@
 name = "fortell365-api"
 main = "index.js"
 compatibility_date = "2025-06-23"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = "npm install"
+
+[vars]
+ALLOW_PROBE_DEV_AUTH = "true"
 
 [[kv_namespaces]]
 binding = "BAZI_KV"

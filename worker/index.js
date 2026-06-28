@@ -1,5 +1,8 @@
-// Cloudflare Worker: 八字专业职业解读 API v3.3
-// v3.3: 修复 - 死标题约束(回调10模块), 子标题从####→###, 加双重死约束
+// Cloudflare Worker: 八字专业职业解读 API v3.6
+// v3.5: 合规层 — 模块标题微调 + 生成后敏感词替换
+// v3.6: 小程序 — 排盘 / 微信登录 / 功能开关
+
+import { computePaipan } from './paipan.js';
 
 const GAN = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
 const ZHI = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
@@ -71,6 +74,204 @@ function getDiZhiRels(zhiArr){
 }
 
 function genId(){return'rpt_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);}
+function genOrderId(){return'ord_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);}
+
+const PRICE_CENTS=1990;
+const FREE_DEADLINE_ISO='2026-07-31T23:59:59+08:00';
+const ALIPAY_QR_URL='https://fortell365.com/pay/alipay-qr.png';
+const FREE_MODULE_COUNT=5;
+const MODULE_HEADER_RE=/^## (?:模块[一二三四五六七八九十\d]+[：:]|(?:[一二三四五六七八九十]+、))/;
+
+const MODULE_TITLE_REPLACEMENTS=[
+  ['## 模块一：命盘概览','## 一、文化档案概览'],
+  ['## 模块一：文化档案概览','## 一、文化档案概览'],
+  ['## 模块二：性格DNA','## 二、性格DNA'],
+  ['## 模块三：五行力量深度分析','## 三、五行力量深度分析'],
+  ['## 模块四：格局与十神详解','## 四、格局与十神详解'],
+  ['## 模块五：地支关系与人生密码','## 五、地支关系与人生密码'],
+  ['## 模块六：身强弱与用神喜忌','## 六、身强弱与用神喜忌'],
+  ['## 模块七：人生各阶段命理详解','## 七、人生各阶段趋势详解'],
+  ['## 模块七：人生各阶段趋势详解','## 七、人生各阶段趋势详解'],
+  ['## 模块八：当前运势详判','## 八、当前阶段趋势分析'],
+  ['## 模块八：当前阶段趋势分析','## 八、当前阶段趋势分析'],
+  ['## 模块九：天赋领域与人生优势','## 九、天赋领域与人生优势'],
+  ['## 模块十：命格总结','## 十、个性画像总结'],
+  ['## 模块十：个性画像总结','## 十、个性画像总结'],
+];
+const COMPLIANCE_REPLACEMENTS=[
+  ['人生各阶段命理详解','人生各阶段趋势详解'],
+  ['当前运势详判','当前阶段趋势分析'],
+  ['命盘概览','文化档案概览'],
+  ['命格总结','个性画像总结'],
+  ['命理分析仅供娱乐参考','国学分析仅供娱乐参考'],
+  ['流年运势','流年趋势'],
+  ['当前运势','当前阶段趋势'],
+  ['今年运势','今年趋势'],
+  ['整体运势','整体趋势'],
+  ['运势','阶段趋势'],
+  ['命格','个性特质'],
+  ['命理格言','国学格言'],
+  ['懂命理','懂国学'],
+  ['命理给','分析给'],
+  ['命理结论','分析结论'],
+  ['命理','国学'],
+  ['算命','分析'],
+  ['占卜','参考'],
+  ['吉凶','利弊'],
+  ['转运','调整'],
+  ['灾祸','挑战'],
+  ['桃花运','人际缘分'],
+  ['桃花','人际缘分'],
+  ['姻缘','情感关系'],
+  ['合婚','情感匹配'],
+  ['财运','事业与收入'],
+  ['发财','增收'],
+  ['破财','支出压力'],
+];
+function applyComplianceFilter(content){
+  let out=content||'';
+  for(const [from,to] of MODULE_TITLE_REPLACEMENTS)out=out.split(from).join(to);
+  for(const [from,to] of COMPLIANCE_REPLACEMENTS)out=out.split(from).join(to);
+  return out;
+}
+
+const REPORT_FOOTER_MARKER='【温馨提示】';
+const REPORT_FOOTER=`\n\n---\n\n> **温馨提示**：本报告基于国学文化档案与 AI 分析生成，仅供娱乐与自我探索参考，不构成升学、就业、投资或医疗决策依据。了解特质只是起点，人生掌握在自己手中——持续学习、主动争取，才能走出属于自己的精彩。`;
+
+function stripReportInternal(content){
+  return (content||'')
+    .replace(/🔒\s*【死约束[^】]*】[\s\S]*?(?=## 一、)/g,'')
+    .replace(/---\s*\n\s*🔒.*$/gm,'')
+    .replace(/【.*?死约束.*?】[\s\S]*$/g,'')
+    .replace(/---\s*\n\s*> ⚠️.*$/g,'')
+    .replace(/\n\n---\n\n> \*\*温馨提示\*\*[\s\S]*$/,'')
+    .trim();
+}
+
+function appendReportFooter(content){
+  const text=(content||'').trim();
+  if(!text)return REPORT_FOOTER.trim();
+  if(text.includes(REPORT_FOOTER_MARKER)||text.includes('人生掌握在自己手中'))return text;
+  return text+REPORT_FOOTER;
+}
+
+function isFreePeriodNow(){
+  return Date.now()<new Date(FREE_DEADLINE_ISO).getTime();
+}
+
+function cleanReportContent(content){
+  return appendReportFooter(applyComplianceFilter(stripReportInternal(content)));
+}
+
+function splitReportModules(content){
+  const cleaned=applyComplianceFilter(stripReportInternal(content));
+  const modules=[];let current='';
+  for(const line of cleaned.split('\n')){
+    if(MODULE_HEADER_RE.test(line)&&current.trim()){modules.push(current.trim());current=line+'\n';}
+    else current+=line+'\n';
+  }
+  if(current.trim())modules.push(current.trim());
+  return modules;
+}
+
+function getPreviewContent(content){
+  const modules=splitReportModules(content);
+  if(!modules.length)return appendReportFooter(applyComplianceFilter(stripReportInternal(content)));
+  if(modules.length<=FREE_MODULE_COUNT)return appendReportFooter(modules.join('\n\n'));
+  return appendReportFooter(
+    modules.slice(0,FREE_MODULE_COUNT).join('\n\n')+'\n\n> *…以上为免费预览（前5章）。解锁后可查看完整10章报告*'
+  );
+}
+
+function getDisplayContent(content,isUnlocked){
+  return isUnlocked?cleanReportContent(content):getPreviewContent(content);
+}
+
+async function getKvReport(env,rid){
+  const raw=await env.BAZI_KV.get('report:'+rid);
+  if(!raw)return null;
+  try{return JSON.parse(raw);}catch(e){return null;}
+}
+
+async function saveKvReport(env,report){
+  await env.BAZI_KV.put('report:'+report.id,JSON.stringify(report));
+}
+
+async function unlockReport(env,rid,unlockType,orderId=null){
+  const kv=await getKvReport(env,rid);
+  if(kv){
+    kv.isUnlocked=true;kv.unlockType=unlockType;
+    if(orderId)kv.orderId=orderId;
+    await saveKvReport(env,kv);
+  }
+  if(env.DB){
+    try{
+      await env.DB.prepare('UPDATE reports SET is_unlocked=1,unlock_type=?,order_id=COALESCE(?,order_id) WHERE id=?')
+        .bind(unlockType,orderId,rid).run();
+    }catch(e){}
+  }
+}
+
+function pricingPayload(){
+  return {
+    price:PRICE_CENTS,
+    priceYuan:(PRICE_CENTS/100).toFixed(2),
+    freeDeadline:FREE_DEADLINE_ISO,
+    isFreePeriod:isFreePeriodNow(),
+    alipayQrUrl:ALIPAY_QR_URL,
+    freeModuleCount:FREE_MODULE_COUNT,
+  };
+}
+
+function featuresPayload(){
+  return {
+    paipan:true,
+    report:true,
+    payment:false,
+    freeModuleCount:FREE_MODULE_COUNT,
+    isFreePeriod:isFreePeriodNow(),
+    freeDeadline:FREE_DEADLINE_ISO,
+  };
+}
+
+async function upsertWechatUser(env,openid){
+  if(!env.DB)throw new Error('数据库未配置');
+  let user=await env.DB.prepare('SELECT id,email FROM users WHERE wechat_openid=?').bind(openid).first();
+  if(!user){
+    const email=`wx_${openid.slice(-12)}@mp.local`;
+    const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(openid+'wx_mp_salt'));
+    const hh=Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    await env.DB.prepare('INSERT INTO users(email,password_hash,wechat_openid)VALUES(?,?,?)').bind(email,hh,openid).run();
+    user=await env.DB.prepare('SELECT id,email FROM users WHERE wechat_openid=?').bind(openid).first();
+  }
+  const token=btoa(JSON.stringify({id:user.id,email:user.email,exp:Date.now()+7*24*3600000}));
+  return {token,email:user.email,userId:user.id,openid};
+}
+
+async function wechatLogin(env,code){
+  const appid=env.WECHAT_APPID,secret=env.WECHAT_SECRET;
+  if(!appid||!secret)throw new Error('微信登录未配置');
+  const wxRes=await fetch(`https://api.weixin.qq.com/sns/jscode2session?appid=${encodeURIComponent(appid)}&secret=${encodeURIComponent(secret)}&js_code=${encodeURIComponent(code)}&grant_type=authorization_code`);
+  const wx=await wxRes.json();
+  if(wx.errcode)throw new Error(wx.errmsg||'微信登录失败');
+  const openid=wx.openid;
+  if(!openid)throw new Error('未获取 openid');
+  return upsertWechatUser(env,openid);
+}
+
+async function devProbeLogin(env,probeId){
+  if(env.ALLOW_PROBE_DEV_AUTH!=='true')throw new Error('探路开发登录未开启');
+  const raw=String(probeId||'').trim();
+  if(!raw||raw.length<6)throw new Error('无效探路设备 ID');
+  const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('probe:'+raw));
+  const openid='probe_'+Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,24);
+  const data=await upsertWechatUser(env,openid);
+  return {...data,mode:'dev_probe'};
+}
+
+function jsonResponse(data,status=200,cors={}){
+  return new Response(JSON.stringify(data),{status,headers:{...cors,'Content-Type':'application/json'}});
+}
 function parseBazi(str){return str.trim().split(/\s+/).map(p=>({gan:p.charAt(0),zhi:p.substring(1)}));}
 
 function computeDayun(yearGan, monthGan, monthZhi, gender){
@@ -117,7 +318,7 @@ function buildPrompt(pillars,name,gender){
   else if(dw==='金')yongShenHint='土（印星生身）为主，辅以水（食伤泄秀）';
   else if(dw==='土')yongShenHint='火（印星生身）为主，辅以金（食伤泄秀）';
 
-  return `🔒 【死约束 — 违反输出无效】以下10个模块标题和子标题必须一字不差输出。你不允许改动任何标题的文字、标点或顺序。子标题只能用"### 专业分析"和"### 白话解读"，不能用其他格式。如果改了任何一个字，整个输出无效。这条规则高于其他所有写作建议。
+  return `🔒 【死约束 — 违反输出无效】以下10个章节标题和子标题必须一字不差输出。标题格式为"## 一、标题名"（用中文序号一、二、三…，禁止写"模块"二字）。子标题只能用"### 专业分析"和"### 白话解读"。如果改了任何一个字，整个输出无效。这条规则高于其他所有写作建议。
 
 你是一位资深命理师，精通《渊海子平》《三命通会》。你不是在填表格——你是在帮一位朋友看他的八字。
 
@@ -164,9 +365,9 @@ ${dyTable}
 
 ---
 
-以下是10个模块的死标题，**一字不改输出**。每个模块下必须用"### 专业分析"然后"### 白话解读"两个子标题。
+以下是10个章节的死标题，**一字不改输出**（禁止出现"模块"二字）。每个章节下必须用"### 专业分析"然后"### 白话解读"两个子标题。
 
-## 模块一：命盘概览
+## 一、文化档案概览
 
 ### 专业分析
 呈现八字排盘表格。日主得令还是失令。天干排列有什么特点。纳音格局如有明显流转提一下。
@@ -174,15 +375,15 @@ ${dyTable}
 ### 白话解读
 用${rizhuMeta[dg]||''}的比喻把这个命格说清楚。天干排列暗示的人生节奏用一句大白话概括。
 
-## 模块二：性格DNA
+## 二、性格DNA
 
 ### 专业分析
 从日主五行和最强的十神组合入手。具体到行为模式——别说"你有才华"，要说"你食神透干，靠手艺和作品说话"。
 
 ### 白话解读
-这个性格在真实生活中的表现。比如"你接到新任务第一反应是先研究透再动手"。让用户能对号入座。写透——用户最关心的模块。
+这个性格在真实生活中的表现。比如"你接到新任务第一反应是先研究透再动手"。让用户能对号入座。写透——用户最关心的章节。
 
-## 模块三：五行力量深度分析
+## 三、五行力量深度分析
 
 ### 专业分析
 五行统计表。最旺五行→天赋，最弱五行→盲区。五行生克链条。
@@ -190,7 +391,7 @@ ${dyTable}
 ### 白话解读
 五行格局优势+需要补充的方向，各一句说清。
 
-## 模块四：格局与十神详解
+## 四、格局与十神详解
 
 ### 专业分析
 四柱各柱天干十神+地支藏干十神。核心格局定性——"食神泄秀格""杀印相生""财官双美"。全局无某十神的显著特征点明。
@@ -198,7 +399,7 @@ ${dyTable}
 ### 白话解读
 天赋引擎在哪，核心驱动力是什么。如有全局无官星/无财星等特征，用生活化语言说清影响。
 
-## 模块五：地支关系与人生密码
+## 五、地支关系与人生密码
 
 ### 专业分析
 最关键的地支关系——六合和六冲比三合更有分量。年月、日时关系最重要。有关系多的展开，干净的别硬说。
@@ -206,7 +407,7 @@ ${dyTable}
 ### 白话解读
 年月→原生家庭和早年环境。日时→伴侣、子女和晚年。冲动→人际张力，合→相处默契。
 
-## 模块六：身强弱与用神喜忌
+## 六、身强弱与用神喜忌
 
 ### 专业分析
 日主${dg}生于${yueZhi}月→${deling?'得令':'不得令'}判断。得地/得势分析。用神${yongShenHint}。用神/喜神/忌神表格。
@@ -214,7 +415,7 @@ ${dyTable}
 ### 白话解读
 身强还是身弱→这意味着什么。优势和注意事项。
 
-## 模块七：人生各阶段命理详解
+## 七、人生各阶段趋势详解
 
 ### 专业分析
 逐十年大运分析。用神运=高光期，忌神运=需谨慎。五行变化、事业财运感情信号。有料的展开，平淡的一句带过。
@@ -222,9 +423,9 @@ ${dyTable}
 ${dayun.map((d,i)=>{return `**${d.startAge}-${d.endAge}岁 [${d.quanpin}]（${d.wuxing}·${getShiShen(dg,d.gan)}）**`;}).join('\\n')}
 
 ### 白话解读
-"你回忆一下…"开头。已走过的验证式描述，正在经历的具体建议，未来的趋势判断。写得越细越好——这是用户最觉得"准"的模块。
+"你回忆一下…"开头。已走过的验证式描述，正在经历的具体建议，未来的趋势判断。写得越细越好——这是用户最觉得"准"的章节。
 
-## 模块八：当前运势详判
+## 八、当前阶段趋势分析
 
 ### 专业分析
 当前大运阶段。2026丙午流年天干丙火地支午火，与原局各柱合冲关系，与大运的互动。
@@ -232,27 +433,34 @@ ${dayun.map((d,i)=>{return `**${d.startAge}-${d.endAge}岁 [${d.quanpin}]（${d.
 ### 白话解读
 今年一句话定调。机遇在哪，坑在哪。抓住最可能发生的一两件事说透。
 
-## 模块九：天赋领域与人生优势
+## 九、天赋领域与人生优势
 
 ### 专业分析
-日主五行+最强十神+用神方向→核心天赋领域。五行→行业映射有理有据。不太适合的方向也点一下。
+日主五行+最强十神+用神方向→核心天赋领域。五行→行业映射有理有据。
+**本产品是专业/职业探索工具，本章必须重点展开：**
+1. **适合专业（详写）**：列出4-6个具体大学专业/学科方向（如计算机科学、金融学、心理学、建筑学、新闻传播、护理学等），每个专业用2-3句说明：为何与本命五行、十神、用神契合；该专业典型课程/训练方式是否匹配你的学习风格。
+2. **适合职业（详写）**：列出4-6个具体职业/岗位（如产品经理、教师、律师、设计师、数据分析师、创业者等），每个职业用2-3句说明：岗位日常做什么、需要哪些能力、你的命盘哪些特质会在该岗位上被放大。
+3. **不太适合的方向**：点1-2个专业或职业类型，用"可能"开头，说明原因，不给绝对判决。
 
 ### 白话解读
-做什么最容易出彩。适合的行业点明原因。不适合的用"可能"开头——命理给倾向不给判决。
+**必须给出可执行的选专业/选职业清单（用户最关心）：**
+- **专业推荐 TOP3**：每条格式「专业名 → 一句话为什么适合你 → 未来可衔接的职业举例」
+- **职业推荐 TOP3**：每条格式「职业名 → 你在这个岗位最容易出彩的原因 → 入门建议（如需要补什么技能）」
+- 用生活化语言，让高中生/大学生/转行者都能看懂、能拿去和家长或老师讨论。
 
-## 模块十：命格总结
+## 十、个性画像总结
 
 ### 专业分析
 一句命理格言或经典论断收尾。这个命格最大的优势和最需注意的风险。
 
 ### 白话解读
-一句话道破命格本质，有诗意有力量。像懂命理的老朋友看完盘后说的掏心话。
+一句话道破命格本质，有诗意有力量。像懂命理的老朋友看完盘后说的掏心话。可顺带一句：若只能记住一个专业方向和一个职业方向，分别是……
 
 ---
 
-🔒 【再次强调死约束】你输出的标题必须是上面10个，一字不差。如果输出"模块一：你的命盘"而不是"模块一：命盘概览"→ 无效。如果用"### 命理分析"而不是"### 专业分析"→ 无效。标题里的冒号必须是中文全角：。违反任何一条，输出作废。
+🔒 【再次强调死约束】你输出的标题必须是上面10个，一字不差，且禁止写"模块"二字。如果输出"## 模块一：…"或"## 一. …"→ 无效。必须用"## 一、文化档案概览"这种格式。如果用"### 命理分析"而不是"### 专业分析"→ 无效。标题里的序号必须用中文"一、二、三…"加顿号。违反任何一条，输出作废。
 
-> ⚠️ 命理分析仅供娱乐参考。`;
+不要在正文末尾自行添加免责声明或温馨提示，系统会自动追加。`;
 }
 
 // OCR：从文本提取 hint
@@ -351,13 +559,25 @@ function extractGanFreqFromText(ocrText){
   const G='甲乙丙丁戊己庚辛壬癸';
   const freq=new Map();
   for(const line of String(ocrText).split('\n')){
-    if(/提\s*示|笔\s*记|节\s*气|农\s*历|属\s/.test(line))continue;
-    for(const ch of line.replace(/[^\u4e00-\u9fff]/g,'')){
+    if(/提\s*示|笔\s*记|节\s*气|农\s*历|属\s|藏\s*干|副\s*星/.test(line))continue;
+    const compact=line.replace(/\s+/g,'');
+    if(/[甲乙丙丁戊己庚辛壬癸][金木水火土]/.test(compact))continue;
+    for(const ch of line.replace(/[^\u4e00-\u9fffA-Za-z]/g,'')){
       const f=fixGanOcr(ch);
       if(f&&G.includes(f))freq.set(f,(freq.get(f)||0)+1);
     }
   }
   return freq;
+}
+
+function extractLooseStemHints(ocrText){
+  const fromCombine=extractGanCombineHint(ocrText);
+  if(fromCombine)return fromCombine;
+  const hints=[];
+  if(/王\s*水|\b王\b/.test(ocrText)&&/藏\s*干/.test(ocrText))hints.push('壬');
+  if(/丁\s*火/.test(ocrText))hints.push('丁');
+  if(/辛\s*金|平\s*金|年\s*金/.test(ocrText))hints.push('辛');
+  return hints.length>=2?hints:null;
 }
 
 function extractHeaderGanHint(ocrText){
@@ -473,7 +693,8 @@ function inferGansFromShiShenRow(ocrText, knownZhi){
   if(candidates.length===0)return null;
   if(candidates.length===1)return candidates[0];
   const labelGans=extractGansFromLabelsText(ocrText)||extractGansFromLineAboveZhi(ocrText);
-  const ganTip=extractGanCombineHint(ocrText);
+  const ganTip=extractLooseStemHints(ocrText);
+  const cangGan=extractGansFromCangGanText(ocrText);
   const ganFreq=extractGanFreqFromText(ocrText);
   const headerGan=extractHeaderGanHint(ocrText);
   const scoreCandidate=(gans)=>{
@@ -481,12 +702,17 @@ function inferGansFromShiShenRow(ocrText, knownZhi){
     if(headerGan&&gans[0]===headerGan)score+=15;
     if(labelGans?.[0]&&gans[0]===labelGans[0])score+=10;
     if(labelGans){for(let i=1;i<4;i++){if(labelGans[i]&&gans[i]===labelGans[i])score+=4;}}
+    if(cangGan){for(let i=0;i<Math.min(4,cangGan.length);i++){if(cangGan[i]&&gans[i]===cangGan[i])score+=8;}}
     if(ganTip){
-      if(ganTip.includes(gans[2]))score+=14;
-      if(ganTip.includes(gans[3]))score+=10;
+      if(ganTip.includes(gans[2]))score+=20;
+      if(ganTip.includes(gans[3]))score+=16;
       if(ganTip.includes(gans[1]))score+=8;
-      if(ganTip.includes(gans[0]))score+=6;
+      if(ganTip.includes(gans[0]))score+=8;
     }
+    if(labels[0]===labels[1]&&labels[0]!=='日元'&&gans[0]===gans[1])score+=10;
+    if(/王/.test(ocrText)&&gans[2]==='壬')score+=22;
+    if(/丁\s*火/.test(ocrText)&&gans[3]==='丁')score+=22;
+    if(/辛\s*金|平\s*金/.test(ocrText)&&gans[0]==='辛')score+=12;
     for(const g of gans)score+=(ganFreq.get(g)||0)*2;
     return score;
   };
@@ -495,24 +721,62 @@ function inferGansFromShiShenRow(ocrText, knownZhi){
   return scored[0].gans;
 }
 
-function resolveGans(ocrText, knownZhi){
-  const direct=extractGansFromLineAboveZhi(ocrText);
-  const inferred=inferGansFromShiShenRow(ocrText, knownZhi);
-  const row=extractShiShenRow(ocrText);
-  const dayIsYuan=!!(row&&row.length>=4);
-  let result=null;
-  if(direct?.length===4&&inferred?.length===4){
-    const matches=direct.filter((g,i)=>g===inferred[i]).length;
-    result=(matches>=3?direct:inferred).slice();
-  }else if(direct?.length===3&&inferred?.length===4){
-    result=inferred.slice();
-    for(let i=0;i<3;i++){if(direct[i]&&direct[i]===inferred[i])result[i]=direct[i];}
-  }else{
-    const src=inferred||direct||extractGansFromLabelsText(ocrText);
-    result=src?src.slice():null;
+function extractGansFromStemRow(ocrText){
+  const Z='子丑寅卯辰巳午未申酉戌亥';
+  const fixZhi=(ch)=>ZHI_OCR_FIX[ch]||(Z.includes(ch)?ch:null);
+  const lines=String(ocrText).split('\n').map(l=>l.trim()).filter(Boolean);
+  let starIdx=-1, zhiIdx=-1, bestZhiCount=0;
+  for(let i=0;i<lines.length;i++){
+    if(starIdx<0&&/主\s*星/.test(lines[i]))starIdx=i;
+    if(!ZHI_ROW_RE.test(lines[i])||/提\s*示|相\s*冲|半\s*合/.test(lines[i]))continue;
+    const zhis=extractCharsFromSeg(lines[i].replace(ZHI_ROW_STRIP,''),fixZhi,Z);
+    if(zhis.length>=3&&zhis.length>=bestZhiCount){bestZhiCount=zhis.length;zhiIdx=i;}
   }
-  if(result&&inferred?.length===4&&dayIsYuan)result[2]=inferred[2];
-  return result;
+  if(starIdx<0||zhiIdx<=starIdx)return null;
+  for(let i=starIdx+1;i<zhiIdx;i++){
+    const line=lines[i];
+    if(/藏\s*干|提\s*示|副\s*星|五\s*行|主\s*星|日\s*期|年\s*柱/.test(line))continue;
+    if(/天\s*干|大\s*干/.test(line)){
+      const seg=line.replace(/^[\s\S]*?(?:天|大)\s*干[：:\s]*/u,'');
+      const gans=extractCharsFromSeg(seg,fixGanOcr,'甲乙丙丁戊己庚辛壬癸');
+      if(gans.length===4)return gans;
+    }
+    if(/[甲乙丙丁戊己庚辛壬癸][金木水火土]/.test(line.replace(/\s/g,'')))continue;
+    const gans=extractCharsFromSeg(line,fixGanOcr,'甲乙丙丁戊己庚辛壬癸');
+    if(gans.length===4)return gans;
+  }
+  return null;
+}
+
+function resolveGans(ocrText, knownZhi, coloredGansHint){
+  const G='甲乙丙丁戊己庚辛壬癸';
+  if(Array.isArray(coloredGansHint)&&coloredGansHint.length===4&&coloredGansHint.every(g=>G.includes(g))){
+    return coloredGansHint.slice();
+  }
+  const stemRow=extractGansFromStemRow(ocrText);
+  if(stemRow?.length===4){
+    const inferred=inferGansFromShiShenRow(ocrText, knownZhi);
+    const row=extractShiShenRow(ocrText);
+    if(inferred?.length===4&&row?.length>=4){
+      const labels=row.slice(0,4).map(normalizeShiShenLabel);
+      labels[2]='日元';
+      const dayGan=inferred[2];
+      const fixed=stemRow.slice();
+      fixed[2]=dayGan;
+      const stemMatches=labels.every((ss,i)=>{
+        if(i===2)return true;
+        if(ss==='比肩')return fixed[i]===dayGan;
+        return getShiShen(dayGan,fixed[i])===ss;
+      });
+      return stemMatches?fixed:inferred;
+    }
+    return stemRow;
+  }
+  const labeled=extractGansFromLabelsText(ocrText);
+  if(labeled?.length===4)return labeled;
+  const aboveZhi=extractGansFromLineAboveZhi(ocrText);
+  if(aboveZhi?.length===4)return aboveZhi;
+  return inferGansFromShiShenRow(ocrText, knownZhi);
 }
 
 function extractRowSnippet(ocrText, labelRe){
@@ -524,7 +788,7 @@ function extractRowSnippet(ocrText, labelRe){
 
 function refineGansWithHints(ocrText, aiGans, knownGansHint, knownZhi){
   const G='甲乙丙丁戊己庚辛壬癸';
-  const inferred=resolveGans(ocrText, knownZhi);
+  const inferred=resolveGans(ocrText, knownZhi, knownGansHint);
   const cang=extractGansFromCangGanText(ocrText);
   const hints=(Array.isArray(knownGansHint)&&knownGansHint.length===4)?knownGansHint:(inferred||cang);
 
@@ -565,7 +829,7 @@ function buildOcrPromptFromText(ocrText, knownZhi, knownGansHint){
   const zhiRow=extractRowSnippet(ocrText,/地\s*支|坚\s*支/);
   const cangRow=extractRowSnippet(ocrText,/藏\s*干/);
   const shiRow=extractRowSnippet(ocrText,/主\s*星/);
-  const inferred=resolveGans(ocrText, knownZhi);
+  const inferred=resolveGans(ocrText, knownZhi, knownGansHint);
   const cangGans=extractGansFromCangGanText(ocrText);
   const ganHint=(Array.isArray(knownGansHint)&&knownGansHint.length===4)?knownGansHint:(inferred||cangGans);
 
@@ -661,14 +925,14 @@ async function parseOcrWithDeepSeek(env, { ocrText, imageBase64, knownZhi, known
 
   // 地支锁定 + 主星十神可确定性反推天干时，直接返回（不依赖 AI）
   if (ocrStr && Array.isArray(knownZhi) && knownZhi.length === 4) {
-    const inferred = resolveGans(ocrStr, knownZhi);
+    const inferred = resolveGans(ocrStr, knownZhi, knownGansHint);
     if (inferred && inferred.every(g => G.includes(g))) {
       const pillars = knownZhi.map((zhi, i) => ({ gan: inferred[i], zhi }));
       return {
         parsed: { name: meta.name, gender: meta.gender, baziString: pillars.map(p => p.gan + p.zhi).join(' ') },
         pillars,
         rawContent: '',
-        source: 'shiShen',
+        source: 'stemRow',
       };
     }
   }
@@ -826,48 +1090,203 @@ export default {
         return new Response(JSON.stringify({success:true,data:{token,email:user.email,userId:user.id}}),{headers:{...cors,'Content-Type':'application/json'}});
       }catch(err){return new Response(JSON.stringify({error:'登录失败:'+err.message}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
     }
+    if(request.method==='GET' && url.pathname==='/config/pricing'){
+      return jsonResponse({success:true,data:pricingPayload()},200,cors);
+    }
+    if(request.method==='GET' && url.pathname==='/config/features'){
+      return jsonResponse({success:true,data:featuresPayload()},200,cors);
+    }
+
+    if(request.method==='POST' && url.pathname==='/auth/wechat'){
+      try {
+        if(!env.DB)return jsonResponse({error:'数据库未配置'},503,cors);
+        const {code}=await request.json();
+        if(!code)return jsonResponse({error:'请提供 code'},400,cors);
+        const data=await wechatLogin(env,code);
+        return jsonResponse({success:true,data},200,cors);
+      }catch(err){return jsonResponse({error:'微信登录失败:'+err.message},500,cors);}
+    }
+
+    if(request.method==='POST' && url.pathname==='/auth/dev-probe'){
+      try {
+        if(!env.DB)return jsonResponse({error:'数据库未配置'},503,cors);
+        const {probeId}=await request.json();
+        const data=await devProbeLogin(env,probeId);
+        return jsonResponse({success:true,data},200,cors);
+      }catch(err){return jsonResponse({error:'探路登录失败:'+err.message},500,cors);}
+    }
+
+    if(request.method==='POST' && url.pathname==='/paipan'){
+      try {
+        const input=await request.json();
+        if(!input.year||!input.month||!input.day)return jsonResponse({error:'请提供完整出生日期'},400,cors);
+        const result=computePaipan(input);
+        return jsonResponse({success:true,data:result},200,cors);
+      }catch(err){return jsonResponse({error:'排盘失败:'+err.message},400,cors);}
+    }
+
+    if(request.method==='GET' && url.pathname.startsWith('/report/')){
+      try {
+        const rid=url.pathname.split('/')[2];
+        if(!rid)return jsonResponse({error:'请提供报告ID'},400,cors);
+        const kv=await getKvReport(env,rid);
+        if(!kv)return jsonResponse({error:'报告不存在'},404,cors);
+        const isUnlocked=!!kv.isUnlocked;
+        return jsonResponse({success:true,data:{
+          reportId:rid,name:kv.name||'',gender:kv.gender||'',baziString:kv.baziString||'',
+          content:getDisplayContent(kv.content||'',isUnlocked),
+          fullContent:cleanReportContent(kv.content||''),
+          isUnlocked,unlockType:kv.unlockType||null,...pricingPayload(),
+        }},200,cors);
+      }catch(err){return jsonResponse({error:'查询失败:'+err.message},500,cors);}
+    }
+
+    if(request.method==='POST' && url.pathname.match(/^\/report\/[^/]+\/unlock-free$/)){
+      try {
+        if(!isFreePeriodNow())return jsonResponse({error:'限时免费已结束，请支付解锁'},403,cors);
+        const rid=url.pathname.split('/')[2];
+        const kv=await getKvReport(env,rid);
+        if(!kv)return jsonResponse({error:'报告不存在'},404,cors);
+        await unlockReport(env,rid,'free_promo');
+        return jsonResponse({success:true,data:{reportId:rid,isUnlocked:true,unlockType:'free_promo'}},200,cors);
+      }catch(err){return jsonResponse({error:'解锁失败:'+err.message},500,cors);}
+    }
+
+    if(request.method==='POST' && url.pathname==='/orders/create'){
+      try {
+        const {reportId}=await request.json();
+        if(!reportId)return jsonResponse({error:'请提供 reportId'},400,cors);
+        const kv=await getKvReport(env,reportId);
+        if(!kv)return jsonResponse({error:'报告不存在'},404,cors);
+        if(kv.isUnlocked)return jsonResponse({success:true,data:{alreadyUnlocked:true,reportId}},200,cors);
+        const p=parseAuth(request);
+        const oid=genOrderId();
+        if(env.DB){
+          try{
+            await env.DB.prepare('INSERT INTO orders(id,report_id,user_id,amount,status)VALUES(?,?,?,?,?)')
+              .bind(oid,reportId,p?.id||null,PRICE_CENTS,'pending').run();
+          }catch(e){}
+        }
+        return jsonResponse({success:true,data:{
+          orderId:oid,reportId,amount:PRICE_CENTS,priceYuan:'19.90',
+          alipayQrUrl:ALIPAY_QR_URL,status:'pending',
+        }},200,cors);
+      }catch(err){return jsonResponse({error:'创建订单失败:'+err.message},500,cors);}
+    }
+
+    if(request.method==='POST' && url.pathname.match(/^\/orders\/[^/]+\/confirm-paid$/)){
+      try {
+        const oid=url.pathname.split('/')[2];
+        const {reportId}=await request.json();
+        if(!reportId)return jsonResponse({error:'请提供 reportId'},400,cors);
+        const kv=await getKvReport(env,reportId);
+        if(!kv)return jsonResponse({error:'报告不存在'},404,cors);
+        if(env.DB){
+          try{
+            await env.DB.prepare('UPDATE orders SET status=?,paid_at=datetime(\'now\') WHERE id=? AND report_id=?')
+              .bind('paid',oid,reportId).run();
+          }catch(e){}
+        }
+        await unlockReport(env,reportId,'paid',oid);
+        return jsonResponse({success:true,data:{orderId:oid,reportId,isUnlocked:true,unlockType:'paid'}},200,cors);
+      }catch(err){return jsonResponse({error:'确认支付失败:'+err.message},500,cors);}
+    }
+
+    if(request.method==='GET' && url.pathname.startsWith('/orders/')){
+      try {
+        const oid=url.pathname.split('/')[2];
+        if(!oid)return jsonResponse({error:'请提供订单ID'},400,cors);
+        if(!env.DB)return jsonResponse({success:true,data:{status:'unknown'}},200,cors);
+        const order=await env.DB.prepare('SELECT id,report_id,status,amount,created_at,paid_at FROM orders WHERE id=?').bind(oid).first();
+        return order?jsonResponse({success:true,data:order},200,cors):jsonResponse({error:'订单不存在'},404,cors);
+      }catch(err){return jsonResponse({error:'查询失败:'+err.message},500,cors);}
+    }
+
+    if(request.method==='POST' && url.pathname.match(/^\/reports\/[^/]+\/claim$/)){
+      try {
+        const p=parseAuth(request);if(!p)return authError(cors);
+        const rid=url.pathname.split('/')[2];
+        const kv=await getKvReport(env,rid);
+        if(!kv)return jsonResponse({error:'报告不存在'},404,cors);
+        const existing=await env.DB.prepare('SELECT id FROM reports WHERE id=? AND user_id=?').bind(rid,p.id).first();
+        if(!existing){
+          await env.DB.prepare('INSERT OR REPLACE INTO reports(id,user_id,name,gender,bazi_string,content,is_unlocked,unlock_type,order_id)VALUES(?,?,?,?,?,?,?,?,?)')
+            .bind(rid,p.id,kv.name||'',kv.gender||'',kv.baziString||'',kv.content||'',kv.isUnlocked?1:0,kv.unlockType||null,kv.orderId||null).run();
+        }
+        return jsonResponse({success:true,data:{reportId:rid}},200,cors);
+      }catch(err){return jsonResponse({error:'绑定失败:'+err.message},500,cors);}
+    }
+
     if(request.method==='GET' && url.pathname==='/reports'){
       try {
         const p=parseAuth(request);if(!p)return authError(cors);
-        const {results}=await env.DB.prepare('SELECT id,name,gender,bazi_string,created_at FROM reports WHERE user_id=? ORDER BY created_at DESC LIMIT 50').bind(p.id).all();
-        return new Response(JSON.stringify({success:true,data:results}),{headers:{...cors,'Content-Type':'application/json'}});
-      }catch(err){return new Response(JSON.stringify({error:'查询失败:'+err.message}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
+        const {results}=await env.DB.prepare('SELECT id,name,gender,bazi_string,is_unlocked,unlock_type,created_at FROM reports WHERE user_id=? ORDER BY created_at DESC LIMIT 50').bind(p.id).all();
+        return jsonResponse({success:true,data:results},200,cors);
+      }catch(err){return jsonResponse({error:'查询失败:'+err.message},500,cors);}
     }
     if(request.method==='POST' && url.pathname==='/reports'){
       try {
         const p=parseAuth(request);if(!p)return authError(cors);
-        const {reportId,name,gender,baziString,content}=await request.json();
-        if(!reportId||!content)return new Response(JSON.stringify({error:'请提供完整报告数据'}),{status:400,headers:{...cors,'Content-Type':'application/json'}});
-        await env.DB.prepare('INSERT OR REPLACE INTO reports(id,user_id,name,gender,bazi_string,content)VALUES(?,?,?,?,?,?)').bind(reportId,p.id,name,gender,baziString,content).run();
-        return new Response(JSON.stringify({success:true,data:{reportId}}),{headers:{...cors,'Content-Type':'application/json'}});
-      }catch(err){return new Response(JSON.stringify({error:'保存失败:'+err.message}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
+        const {reportId,name,gender,baziString,content,isUnlocked,unlockType,orderId}=await request.json();
+        if(!reportId||!content)return jsonResponse({error:'请提供完整报告数据'},400,cors);
+        await env.DB.prepare('INSERT OR REPLACE INTO reports(id,user_id,name,gender,bazi_string,content,is_unlocked,unlock_type,order_id)VALUES(?,?,?,?,?,?,?,?,?)')
+          .bind(reportId,p.id,name,gender,baziString,content,isUnlocked?1:0,unlockType||null,orderId||null).run();
+        return jsonResponse({success:true,data:{reportId}},200,cors);
+      }catch(err){return jsonResponse({error:'保存失败:'+err.message},500,cors);}
     }
     if(request.method==='GET' && url.pathname.startsWith('/reports/')){
       try {
         const rid=url.pathname.split('/')[2];
-        if(!rid)return new Response(JSON.stringify({error:'请提供报告ID'}),{status:400,headers:{...cors,'Content-Type':'application/json'}});
-        const report=await env.DB.prepare('SELECT * FROM reports WHERE id=?').bind(rid).first();
-        return report?new Response(JSON.stringify({success:true,data:report}),{headers:{...cors,'Content-Type':'application/json'}}):new Response(JSON.stringify({error:'报告不存在'}),{status:404,headers:{...cors,'Content-Type':'application/json'}});
-      }catch(err){return new Response(JSON.stringify({error:'查询失败:'+err.message}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
+        if(!rid||rid==='claim')return jsonResponse({error:'请提供报告ID'},400,cors);
+        const p=parseAuth(request);if(!p)return authError(cors);
+        const report=await env.DB.prepare('SELECT * FROM reports WHERE id=? AND user_id=?').bind(rid,p.id).first();
+        if(!report)return jsonResponse({error:'报告不存在'},404,cors);
+        const isUnlocked=!!report.is_unlocked;
+        return jsonResponse({success:true,data:{
+          reportId:report.id,name:report.name,gender:report.gender,baziString:report.bazi_string,
+          content:getDisplayContent(report.content,isUnlocked),
+          fullContent:cleanReportContent(report.content),
+          isUnlocked,unlockType:report.unlock_type,...pricingPayload(),
+        }},200,cors);
+      }catch(err){return jsonResponse({error:'查询失败:'+err.message},500,cors);}
     }
 
     // Generate
-    if(request.method==='POST'){
+    if(request.method==='POST' && (url.pathname==='/generate' || url.pathname==='/')){
       try {
         const input=await request.json();
-        if(!input.baziString)return new Response(JSON.stringify({error:'请提供baziString'}),{status:400,headers:{...cors,'Content-Type':'application/json'}});
+        if(!input.baziString)return jsonResponse({error:'请提供baziString'},400,cors);
         const pillars=parseBazi(input.baziString);
-        if(pillars.length!==4)return new Response(JSON.stringify({error:'八字需4柱'}),{status:400,headers:{...cors,'Content-Type':'application/json'}});
+        if(pillars.length!==4)return jsonResponse({error:'八字需4柱'},400,cors);
         const prompt=buildPrompt(pillars,input.name||'用户',input.gender||'male');
         const aiRes=await fetch('https://api.deepseek.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+env.DEEPSEEK_API_KEY},body:JSON.stringify({model:'deepseek-chat',messages:[{role:'user',content:prompt}],temperature:0.3,max_tokens:12000})});
-        if(!aiRes.ok){const e=await aiRes.text();return new Response(JSON.stringify({error:'AI失败:'+aiRes.status}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
-        const content=(await aiRes.json()).choices?.[0]?.message?.content||'';
+        if(!aiRes.ok){const e=await aiRes.text();return jsonResponse({error:'AI失败:'+aiRes.status},500,cors);}
+        const rawContent=(await aiRes.json()).choices?.[0]?.message?.content||'';
+        const content=cleanReportContent(rawContent);
         const rid=genId();
-        await env.BAZI_KV.put('report:'+rid,JSON.stringify({id:rid,content,name:input.name,createdAt:Date.now(),gender:input.gender,baziString:input.baziString}));
-        return new Response(JSON.stringify({success:true,data:{reportId:rid,fullContent:content,baziString:pillars.map(p=>p.gan+p.zhi).join(' '),dayGan:pillars[2].gan,dayWuxing:GAN_WUXING[pillars[2].gan]}}),{headers:{...cors,'Content-Type':'application/json'}});
-      }catch(err){return new Response(JSON.stringify({error:err.message}),{status:500,headers:{...cors,'Content-Type':'application/json'}});}
+        const freeUnlock=isFreePeriodNow();
+        await saveKvReport(env,{id:rid,content,name:input.name,createdAt:Date.now(),gender:input.gender,baziString:input.baziString,isUnlocked:freeUnlock,unlockType:freeUnlock?'free_promo':null});
+        if(freeUnlock)await unlockReport(env,rid,'free_promo');
+        const authUser=parseAuth(request);
+        if(authUser&&env.DB){
+          try{
+            await env.DB.prepare('INSERT OR REPLACE INTO reports(id,user_id,name,gender,bazi_string,content,is_unlocked,unlock_type)VALUES(?,?,?,?,?,?,?,?)')
+              .bind(rid,authUser.id,input.name||'',input.gender||'',input.baziString,content,freeUnlock?1:0,freeUnlock?'free_promo':null).run();
+          }catch(e){}
+        }
+        const preview=getDisplayContent(content,freeUnlock);
+        return jsonResponse({success:true,data:{
+          reportId:rid,
+          fullContent:cleanReportContent(content),
+          previewContent:preview,
+          baziString:pillars.map(p=>p.gan+p.zhi).join(' '),
+          dayGan:pillars[2].gan,
+          dayWuxing:GAN_WUXING[pillars[2].gan],
+          isUnlocked:freeUnlock,
+        }},200,cors);
+      }catch(err){return jsonResponse({error:err.message},500,cors);}
     }
-    return new Response(JSON.stringify({status:'ok',version:'3.3'}),{headers:{...cors,'Content-Type':'application/json'}});
+    return jsonResponse({status:'ok',version:'3.6',features:featuresPayload()},200,cors);
   }
 };
 

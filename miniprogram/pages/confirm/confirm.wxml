@@ -1,0 +1,24 @@
+<view class="container">
+  <view class="card">
+    <view class="title">确认四柱信息</view>
+    <view class="subtitle">{{name}} · {{gender}} · {{birthTimeText}} · {{birthPlace}}</view>
+    <view class="subtitle" wx:if="{{solarTimeNote}}">{{solarTimeNote}}</view>
+  </view>
+
+  <view class="card">
+    <view class="pillar-grid">
+      <view class="pillar-item" wx:for="{{pillars}}" wx:key="name">
+        <view class="pillar-label">{{item.name}}</view>
+        <view class="pillar-value">{{item.gan}}{{item.zhi}}</view>
+      </view>
+    </view>
+    <view class="subtitle" style="margin-top:24rpx;text-align:center">{{baziString}}</view>
+  </view>
+
+  <view class="card">
+    <view class="subtitle">请核对以上文化档案四柱信息。确认后将生成职业探索报告（约需 30–60 秒）。</view>
+  </view>
+
+  <button class="btn-primary" bindtap="confirmGenerate" loading="{{loading}}" disabled="{{loading}}">确认并生成报告</button>
+  <button class="btn-secondary" style="margin-top:16rpx" bindtap="goBack">返回修改</button>
+</view>

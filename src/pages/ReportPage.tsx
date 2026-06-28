@@ -1,20 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Loader2, CheckCircle, Save, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Loader2, CheckCircle, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { QRCodeSVG } from 'qrcode.react'
 import { useAuth, API } from '../lib/auth'
+import { cleanReportContent, getDisplayContent } from '../lib/reportContent'
 
-// 限时免费截止日期
-const FREE_DEADLINE = new Date('2026-07-30T23:59:59+08:00')
-const PRICE = 1990 // ¥19.90
-const FREE_PREVIEW_LINES = 60 // 免费预览行数（约3个模块）
+const ALIPAY_QR = '/pay/alipay-qr.png'
 
 interface ReportData {
   reportId: string
   fullContent: string
   fortuneType: string
   formData?: { name: string; gender: string; baziString: string }
+  isUnlocked?: boolean
+  unlockType?: string | null
+}
+
+interface PricingConfig {
+  priceYuan: string
+  isFreePeriod: boolean
+  freeDeadline: string
+  alipayQrUrl: string
 }
 
 export default function ReportPage() {
@@ -22,84 +28,167 @@ export default function ReportPage() {
   const { user } = useAuth()
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [wechatId, setWechatId] = useState('')
-  const [wechatSubmitted, setWechatSubmitted] = useState(false)
-  const [isFreePeriod] = useState(() => new Date() < FREE_DEADLINE)
-  const [paid, setPaid] = useState(false)
-  const [savedToCloud, setSavedToCloud] = useState(false)
+  const [isUnlocked, setIsUnlocked] = useState(false)
+  const [pricing, setPricing] = useState<PricingConfig | null>(null)
+  const [paying, setPaying] = useState(false)
+  const [orderId, setOrderId] = useState<string | null>(null)
+  const [showLoginHint, setShowLoginHint] = useState(false)
 
-  // 清理输出的 prompt 泄露内容
-  const cleanContent = (content: string) => {
-    return content
-      .replace(/🔒\s*【死约束[^】]*】[\s\S]*?(?=## 模块一)/g, '')
-      .replace(/---\s*\n\s*🔒.*$/gm, '')
-      .replace(/【.*?死约束.*?】[\s\S]*$/g, '')
-      .replace(/---\s*\n\s*> ⚠️.*$/g, '')
-      .trim()
-  }
-
-  useEffect(() => {
+  const loadReport = useCallback(async () => {
     if (!id) return
+    setLoading(true)
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (user) headers.Authorization = 'Bearer ' + user.token
+
+      const endpoint = user ? `${API}/reports/${id}` : `${API}/report/${id}`
+      const resp = await fetch(endpoint, { headers })
+      const data = await resp.json()
+
+      if (data.success && data.data) {
+        const d = data.data
+        setPricing({
+          priceYuan: d.priceYuan || '19.90',
+          isFreePeriod: !!d.isFreePeriod,
+          freeDeadline: d.freeDeadline || '',
+          alipayQrUrl: d.alipayQrUrl || ALIPAY_QR,
+        })
+        const full = cleanReportContent(d.fullContent || d.content || '')
+        const unlocked = !!d.isUnlocked
+        setIsUnlocked(unlocked)
+        setReport({
+          reportId: d.reportId || id,
+          fullContent: full,
+          fortuneType: 'bazi',
+          formData: {
+            name: d.name || '',
+            gender: d.gender || '',
+            baziString: d.baziString || '',
+          },
+          isUnlocked: unlocked,
+          unlockType: d.unlockType,
+        })
+        localStorage.setItem(`report_${id}`, JSON.stringify({
+          fullContent: full, reportId: id, fortuneType: 'bazi',
+          formData: { name: d.name, gender: d.gender, baziString: d.baziString },
+          isUnlocked: unlocked, unlockType: d.unlockType, timestamp: Date.now(),
+        }))
+        return
+      }
+    } catch { /* fallback to cache */ }
+
     const cached = localStorage.getItem(`report_${id}`)
     if (cached) {
       try {
         const data = JSON.parse(cached)
-        data.fullContent = cleanContent(data.fullContent)
+        data.fullContent = cleanReportContent(data.fullContent || '')
         setReport(data)
-        if (data.paid || (isFreePeriod && data.wechatId)) { setPaid(true); setWechatSubmitted(true) }
-        if (data.wechatId) setWechatId(data.wechatId)
-      } catch { console.error('Failed to parse report') }
+        setIsUnlocked(!!data.isUnlocked)
+      } catch { /* ignore */ }
     }
     setLoading(false)
-  }, [id])
+  }, [id, user])
 
-  // 登录用户自动保存报告
+  useEffect(() => { loadReport().finally(() => setLoading(false)) }, [loadReport])
+
   useEffect(() => {
-    if (!report || !user || savedToCloud) return
-    if (!paid) return
-    const save = async () => {
-      try {
-        await fetch(API + '/reports', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + user.token },
-          body: JSON.stringify({ reportId: report.reportId, name: report.formData?.name || '', gender: report.formData?.gender || '', baziString: report.formData?.baziString || '', content: report.fullContent })
-        })
-        setSavedToCloud(true)
-      } catch {}
-    }
-    save()
-  }, [report, user, paid])
+    if (!user || !isUnlocked || !id) return
+    fetch(`${API}/reports/${id}/claim`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + user.token },
+    }).catch(() => {})
+  }, [user, isUnlocked, id])
 
-  const submitWechat = () => {
-    const trimmed = wechatId.trim()
-    if (!trimmed) { toast.error('请输入您的微信号'); return }
-    setWechatSubmitted(true)
-    if (isFreePeriod || paid) {
-      const updated = { ...report!, wechatId: trimmed, paid: true }
-      localStorage.setItem(`report_${id}`, JSON.stringify(updated))
-      setReport(updated)
-      setPaid(true)
+  useEffect(() => {
+    fetch(API + '/config/pricing')
+      .then(r => r.json())
+      .then(d => { if (d.success) setPricing(d.data) })
+      .catch(() => {})
+  }, [])
+
+  const syncUnlockToAccount = async (unlockType: string, oid?: string) => {
+    if (!user || !report) return
+    try {
+      await fetch(API + '/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + user.token },
+        body: JSON.stringify({
+          reportId: report.reportId,
+          name: report.formData?.name || '',
+          gender: report.formData?.gender || '',
+          baziString: report.formData?.baziString || '',
+          content: report.fullContent,
+          isUnlocked: true,
+          unlockType,
+          orderId: oid || null,
+        }),
+      })
+    } catch { /* silent */ }
+  }
+
+  const handleFreeUnlock = async () => {
+    if (!id) return
+    try {
+      const resp = await fetch(`${API}/report/${id}/unlock-free`, { method: 'POST' })
+      const data = await resp.json()
+      if (!resp.ok || !data.success) throw new Error(data.error || '解锁失败')
+      setIsUnlocked(true)
+      setReport(r => r ? { ...r, isUnlocked: true, unlockType: 'free_promo' } : r)
+      localStorage.setItem(`report_${id}`, JSON.stringify({
+        ...JSON.parse(localStorage.getItem(`report_${id}`) || '{}'),
+        isUnlocked: true, unlockType: 'free_promo',
+      }))
+      await syncUnlockToAccount('free_promo')
+      if (!user) setShowLoginHint(true)
       toast.success('限时免费！完整报告已解锁')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : '解锁失败')
     }
   }
 
-  const handlePay = () => {
-    const trimmed = wechatId.trim()
-    if (!trimmed) { toast.error('请先输入微信号'); return }
-    setPaid(true)
-    const updated = { ...report!, wechatId: trimmed, paid: true }
-    localStorage.setItem(`report_${id}`, JSON.stringify(updated))
-    setReport(updated)
-    toast.success('解锁成功！')
+  const handleStartPay = async () => {
+    if (!id || !report) return
+    setPaying(true)
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (user) headers.Authorization = 'Bearer ' + user.token
+      const resp = await fetch(API + '/orders/create', {
+        method: 'POST', headers,
+        body: JSON.stringify({ reportId: id }),
+      })
+      const data = await resp.json()
+      if (!resp.ok || !data.success) throw new Error(data.error || '创建订单失败')
+      if (data.data.alreadyUnlocked) {
+        setIsUnlocked(true)
+        toast.success('报告已解锁')
+        return
+      }
+      setOrderId(data.data.orderId)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : '创建订单失败')
+    } finally {
+      setPaying(false)
+    }
   }
 
-  // 免费预览：前60行（约3个模块）
-  const getDisplayContent = () => {
-    if (!report?.fullContent) return ''
-    if (paid || isFreePeriod) return report.fullContent
-    const lines = report.fullContent.split('\n')
-    if (lines.length <= FREE_PREVIEW_LINES) return report.fullContent
-    return lines.slice(0, FREE_PREVIEW_LINES).join('\n')
-        + '\n\n> *…以上为免费预览（前3个模块）。完整10模块报告需 ¥19.90 解锁（限时免费至2026年7月30日）*'
+  const handleConfirmPaid = async () => {
+    if (!id || !orderId) return
+    try {
+      const resp = await fetch(`${API}/orders/${orderId}/confirm-paid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportId: id }),
+      })
+      const data = await resp.json()
+      if (!resp.ok || !data.success) throw new Error(data.error || '确认失败')
+      setIsUnlocked(true)
+      setReport(r => r ? { ...r, isUnlocked: true, unlockType: 'paid' } : r)
+      await syncUnlockToAccount('paid', orderId)
+      if (!user) setShowLoginHint(true)
+      toast.success('解锁成功！')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : '确认失败')
+    }
   }
 
   const renderContent = (content: string | undefined) => {
@@ -111,8 +200,7 @@ export default function ReportPage() {
         return <h3 key={i} className={`text-base font-semibold mt-5 mb-2 ${line.includes('专业分析') ? 'text-amber-700' : line.includes('白话解读') ? 'text-purple-700' : 'text-slate-800'}`}>{line.replace('### ', '')}</h3>
       if (line.startsWith('> '))
         return <blockquote key={i} className="border-l-4 border-amber-400 bg-amber-50 px-3 py-2 my-2 text-sm text-slate-500 italic rounded-r-lg">{line.replace(/^> /, '')}</blockquote>
-      if (line.startsWith('```'))
-        return null
+      if (line.startsWith('```')) return null
       if (line.trim())
         return <p key={i} className="text-slate-600 leading-relaxed my-1.5 text-sm">{line.replace(/\*\*/g, '')}</p>
       return <div key={i} className="h-2" />
@@ -120,9 +208,18 @@ export default function ReportPage() {
   }
 
   if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-purple-600" /></div>
-  if (!report) return <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4"><div className="text-center"><h2 className="text-xl font-semibold text-slate-900 mb-2">报告不存在</h2><Link to="/" className="text-purple-600 hover:underline">返回首页</Link></div></div>
+  if (!report) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+      <div className="text-center">
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">报告不存在</h2>
+        <Link to="/" className="text-purple-600 hover:underline">返回首页</Link>
+      </div>
+    </div>
+  )
 
-  const isUnlocked = paid || isFreePeriod
+  const displayContent = getDisplayContent(report.fullContent, isUnlocked)
+  const isFreePeriod = pricing?.isFreePeriod ?? false
+  const qrUrl = pricing?.alipayQrUrl || ALIPAY_QR
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -132,16 +229,20 @@ export default function ReportPage() {
             <Link to="/" className="p-2 -ml-2 text-slate-500 hover:text-slate-700"><ArrowLeft className="w-5 h-5" /></Link>
             <h1 className="text-lg font-semibold text-slate-900">八字命理报告</h1>
           </div>
-          <div className="flex items-center gap-2">
-            {user && !savedToCloud && isUnlocked && (
-              <button onClick={handlePay} className="text-xs px-2 py-1 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100"><Save className="w-4 h-4 inline mr-1" />保存</button>
-            )}
-            {!user && <Link to="/login" className="text-xs text-slate-400 hover:text-purple-600">登录保存</Link>}
-          </div>
+          {!user && (
+            <Link to="/login" className="text-xs text-purple-600 hover:text-purple-700">登录保存</Link>
+          )}
         </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-6">
+        {showLoginHint && !user && (
+          <div className="mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between gap-3">
+            <p className="text-sm text-indigo-700">报告已解锁！登录后可保存到账户，换设备也能查看。</p>
+            <Link to="/login" className="shrink-0 text-sm font-medium text-white bg-purple-600 px-4 py-2 rounded-lg hover:bg-purple-700">去登录</Link>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="p-5 md:p-6">
             {isUnlocked ? (
@@ -149,11 +250,13 @@ export default function ReportPage() {
                 <CheckCircle className="w-3.5 h-3.5" />完整报告
               </div>
             ) : (
-              <div className="inline-block px-2.5 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium mb-4">免费预览版</div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium mb-4">
+                <Lock className="w-3.5 h-3.5" />免费预览（前5模块）
+              </div>
             )}
 
             {report.formData && (
-              <div className="mb-4 p-3 bg-purple-50 rounded-lg flex items-center gap-3 text-sm">
+              <div className="mb-4 p-3 bg-purple-50 rounded-lg flex items-center gap-3 text-sm flex-wrap">
                 <span className="text-purple-600 font-medium">{report.formData.name}</span>
                 <span className="text-slate-300">|</span>
                 <span className="text-slate-500">{report.formData.gender === 'male' ? '男' : '女'}</span>
@@ -162,53 +265,47 @@ export default function ReportPage() {
               </div>
             )}
 
-            <article>{renderContent(getDisplayContent())}</article>
+            <article>{renderContent(displayContent)}</article>
           </div>
 
-          {/* 付费墙 */}
           {!isUnlocked && (
             <div className="relative">
-              <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-transparent to-white" />
+              <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-transparent to-white pointer-events-none" />
               <div className="bg-white pt-4 pb-8 px-5 text-center border-t border-slate-100">
                 <h3 className="text-lg font-bold text-slate-900 mb-1">解锁完整10模块报告</h3>
-                <p className="text-sm text-slate-500 mb-3">¥19.90 · 限时免费至2026年7月30日</p>
+                <p className="text-sm text-slate-500 mb-4">
+                  ¥{pricing?.priceYuan || '19.90'}
+                  {isFreePeriod && ' · 限时免费至2026年7月31日'}
+                </p>
 
-                {/* 限时免费 */}
-                {isFreePeriod && (
-                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl">
-                    <p className="text-sm text-green-700 font-medium">🎉 当前限时免费</p>
-                    <p className="text-xs text-green-600 mt-1">输入微信号即可解锁全部10模块完整报告</p>
+                {isFreePeriod ? (
+                  <button onClick={handleFreeUnlock}
+                    className="w-full max-w-xs mx-auto py-3 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold hover:opacity-90 shadow-lg shadow-purple-500/25">
+                    免费解锁完整报告
+                  </button>
+                ) : (
+                  <div className="max-w-xs mx-auto space-y-3">
+                    {!orderId ? (
+                      <button onClick={handleStartPay} disabled={paying}
+                        className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
+                        {paying ? '准备中…' : '支付 ¥19.90 解锁'}
+                      </button>
+                    ) : (
+                      <>
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                          <p className="text-sm font-medium text-slate-700 mb-3">请支付宝扫码支付 ¥19.90</p>
+                          <img src={qrUrl.startsWith('http') ? qrUrl : ALIPAY_QR} alt="支付宝收款码"
+                            className="w-44 h-auto mx-auto rounded-lg mb-2" />
+                          <p className="text-xs text-slate-400">打开支付宝 → 扫一扫 → 支付 ¥19.90</p>
+                        </div>
+                        <button onClick={handleConfirmPaid}
+                          className="w-full py-3 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold hover:opacity-90">
+                          我已完成支付，解锁报告
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
-
-                {/* 微信输入 */}
-                <div className="max-w-xs mx-auto space-y-3">
-                  <input type="text" value={wechatId} onChange={e => setWechatId(e.target.value)} placeholder="请输入您的微信号"
-                    className="w-full h-12 px-4 border border-slate-200 rounded-xl text-sm text-center focus:ring-2 focus:ring-purple-100 focus:border-purple-500 outline-none" />
-
-                  {/* 付费期显示支付宝 */}
-                  {!isFreePeriod && wechatId.trim() && (
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                      <p className="text-sm font-medium text-slate-700 mb-3">支付 ¥19.90 解锁完整报告</p>
-                      <div className="bg-white inline-block p-3 rounded-xl mb-2">
-                        <QRCodeSVG value={`https://fortell365.com/pay?report=${id}&u=${wechatId.trim()}`} size={160} />
-                      </div>
-                      <p className="text-xs text-slate-400">手机长按二维码 → 识别 → 支付宝支付</p>
-                      <button onClick={handlePay}
-                        className="w-full mt-3 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
-                        已完成支付，解锁报告
-                      </button>
-                    </div>
-                  )}
-
-                  <button onClick={submitWechat} disabled={!wechatId.trim()}
-                    className="w-full py-3 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25">
-                    {isFreePeriod ? '免费解锁完整报告' : '确认微信号'}
-                  </button>
-                  {!isFreePeriod && !wechatId.trim() && (
-                    <p className="text-xs text-slate-400">先输入微信号，再扫码支付 ¥19.90</p>
-                  )}
-                </div>
               </div>
             </div>
           )}

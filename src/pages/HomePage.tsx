@@ -96,7 +96,7 @@ export default function HomePage() {
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400">
               <div className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                命盘概览
+                文化档案概览
               </div>
               <div className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
@@ -124,7 +124,7 @@ export default function HomePage() {
               </div>
               <div className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-amber-400 rounded-full shrink-0" />
-                当前运势详判
+                当前阶段趋势分析
               </div>
               <div className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
@@ -132,7 +132,7 @@ export default function HomePage() {
               </div>
               <div className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                命格总结
+                个性画像总结
               </div>
             </div>
           </div>

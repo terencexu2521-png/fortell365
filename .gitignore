@@ -25,3 +25,5 @@ dist-ssr
 chi_sim.traineddata
 .vercel
 worker/.wrangler
+worker/node_modules
+miniprogram/project.private.config.json

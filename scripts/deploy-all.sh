@@ -30,4 +30,4 @@ npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
 
 echo "✅ 部署完成"
 echo "   前端: https://fortell365.com"
-echo "   API:  https://fortell365-api.terencexu2521.workers.dev"
+echo "   API:  https://fortell365.com/api  （Vercel 反代 Worker）"
