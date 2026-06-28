@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Sparkles, Loader2, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAuth } from '../lib/auth'
+import { useAuth, API } from '../lib/auth'
 import { computePaipan } from '@/lib/paipan'
 import {
   provinces,
@@ -13,7 +13,7 @@ import {
   formatBirthPlace,
 } from '@/lib/regions'
 
-const API_URL = 'https://fortell365-api.terencexu2521.workers.dev'
+const FORM_STORAGE_KEY = 'fortell365_generate_form'
 
 type Step = 'form' | 'confirm' | 'loading'
 
@@ -31,6 +31,34 @@ export default function GeneratePage() {
   const [cityIndex, setCityIndex] = useState(0)
   const [districtIndex, setDistrictIndex] = useState(0)
   const [paipanResult, setPaipanResult] = useState<ReturnType<typeof computePaipan> | null>(null)
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem(FORM_STORAGE_KEY)
+    if (!raw) return
+    try {
+      const saved = JSON.parse(raw)
+      if (saved.name) setName(saved.name)
+      if (saved.gender) setGender(saved.gender)
+      if (saved.calendarType) setCalendarType(saved.calendarType)
+      if (saved.date) setDate(saved.date)
+      if (saved.time) setTime(saved.time)
+      if (typeof saved.provinceIndex === 'number') setProvinceIndex(saved.provinceIndex)
+      if (typeof saved.cityIndex === 'number') setCityIndex(saved.cityIndex)
+      if (typeof saved.districtIndex === 'number') setDistrictIndex(saved.districtIndex)
+      if (saved.paipanResult) {
+        setPaipanResult(saved.paipanResult)
+        setStep('confirm')
+      }
+      sessionStorage.removeItem(FORM_STORAGE_KEY)
+    } catch { /* ignore */ }
+  }, [])
+
+  const saveFormForLogin = () => {
+    sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify({
+      name, gender, calendarType, date, time,
+      provinceIndex, cityIndex, districtIndex, paipanResult,
+    }))
+  }
 
   const cities = getProvince(provinceIndex).cities
   const districts = getCity(provinceIndex, cityIndex).districts
@@ -72,6 +100,12 @@ export default function GeneratePage() {
 
   const handleGenerate = async () => {
     if (!paipanResult) return
+    if (!user) {
+      saveFormForLogin()
+      toast('请先登录后再生成报告', { icon: '🔐' })
+      navigate('/login?redirect=/generate')
+      return
+    }
     setStep('loading')
     try {
       const body = {
@@ -82,9 +116,11 @@ export default function GeneratePage() {
         baziString: paipanResult.baziString,
         channel: 'web',
       }
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (user) headers.Authorization = 'Bearer ' + user.token
-      const response = await fetch(API_URL + '/generate', { method: 'POST', headers, body: JSON.stringify(body) })
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + user.token,
+      }
+      const response = await fetch(API + '/generate', { method: 'POST', headers, body: JSON.stringify(body) })
       const data = await response.json()
       if (!response.ok || !data?.success) throw new Error(data?.error || `生成失败 (${response.status})`)
       const reportId = data.data.reportId
@@ -95,9 +131,14 @@ export default function GeneratePage() {
           reportId,
           fortuneType: 'bazi',
           formData: { name: name.trim(), gender, baziString: paipanResult.baziString },
+          isUnlocked: false,
           timestamp: Date.now(),
         }),
       )
+      await fetch(`${API}/reports/${reportId}/claim`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + user.token },
+      }).catch(() => {})
       navigate(`/report/${reportId}`)
     } catch (err: unknown) {
       console.error(err)
@@ -163,8 +204,16 @@ export default function GeneratePage() {
             onClick={handleGenerate}
             className="w-full h-14 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold text-lg"
           >
-            确认并生成报告
+            {user ? '确认并生成报告' : '登录后生成报告'}
           </button>
+          {!user && (
+            <p className="text-center text-sm text-slate-500">
+              需先 <Link to="/login?redirect=/generate" onClick={saveFormForLogin} className="text-purple-600 hover:underline">登录</Link>
+              {' '}或{' '}
+              <Link to="/register?redirect=/generate" onClick={saveFormForLogin} className="text-purple-600 hover:underline">注册</Link>
+              ，报告将保存到账户
+            </p>
+          )}
         </div>
       </div>
     )
@@ -306,7 +355,7 @@ export default function GeneratePage() {
           </button>
 
           <p className="text-center text-xs text-slate-400">
-            免费预览前 5 模块 · 完整 10 模块 ¥19.90 · 登录后可保存到账户
+            免费预览前 5 模块 · 后 5 模块 ¥19.90 解锁 · 登录后自动保存
           </p>
         </div>
       </div>

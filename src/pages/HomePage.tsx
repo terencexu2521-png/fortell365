@@ -77,63 +77,46 @@ export default function HomePage() {
               <Sun className="w-7 h-7 text-amber-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-lg font-semibold text-slate-900">八字命理深度解读</h3>
+              <h3 className="text-lg font-semibold text-slate-900">开始专业/职业探索</h3>
               <p className="text-slate-500 text-sm">
-                日主五行 → 性格底色 · 十神组合 → 天赋领域 · 八步大运 → 人生节奏
+                免费预览 5 模块 · 后 5 模块 ¥19.90 解锁 · 登录后保存
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">免费</span>
+              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">5 模块免费</span>
               <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-purple-500 transition" />
             </div>
           </Link>
 
           {/* Value proposition — v3 扩展版 */}
           <div className="mt-6 p-4 bg-slate-50 rounded-xl">
-            <p className="text-center text-sm text-slate-500">
-              <span className="font-medium text-slate-700">免费查看 10 大模块完整命理解读</span>
+            <p className="text-center text-sm text-slate-500 mb-1">
+              <span className="font-medium text-slate-700">10 大模块报告 · 前 5 免费 · 后 5 付费解锁</span>
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400">
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                文化档案概览
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                性格DNA
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                五行力量分析
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                格局与十神
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                地支关系密码
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                身强弱与用神
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full shrink-0" />
-                人生各阶段详解
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full shrink-0" />
-                当前阶段趋势分析
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                天赋领域分析
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full shrink-0" />
-                个性画像总结
-              </div>
+            <p className="text-center text-xs text-slate-400 mb-3">注册登录后，报告自动保存到「我的报告」</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              {[
+                { name: '文化档案概览', free: true },
+                { name: '性格DNA', free: true },
+                { name: '五行力量分析', free: true },
+                { name: '格局与十神', free: true },
+                { name: '地支关系密码', free: true },
+                { name: '身强弱与用神', free: false },
+                { name: '人生各阶段详解', free: false },
+                { name: '当前阶段趋势', free: false },
+                { name: '天赋领域分析', free: false },
+                { name: '个性画像总结', free: false },
+              ].map((item) => (
+                <div key={item.name} className="flex items-center justify-between gap-1 text-slate-500">
+                  <span className="flex items-center gap-1 min-w-0">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.free ? 'bg-purple-400' : 'bg-amber-400'}`} />
+                    <span className="truncate">{item.name}</span>
+                  </span>
+                  <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] ${item.free ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                    {item.free ? '免费' : '付费'}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -1264,17 +1264,15 @@ export default {
         const rawContent=(await aiRes.json()).choices?.[0]?.message?.content||'';
         const content=cleanReportContent(rawContent);
         const rid=genId();
-        const freeUnlock=isFreePeriodNow();
-        await saveKvReport(env,{id:rid,content,name:input.name,createdAt:Date.now(),gender:input.gender,baziString:input.baziString,isUnlocked:freeUnlock,unlockType:freeUnlock?'free_promo':null});
-        if(freeUnlock)await unlockReport(env,rid,'free_promo');
+        await saveKvReport(env,{id:rid,content,name:input.name,createdAt:Date.now(),gender:input.gender,baziString:input.baziString,isUnlocked:false,unlockType:null});
         const authUser=parseAuth(request);
         if(authUser&&env.DB){
           try{
             await env.DB.prepare('INSERT OR REPLACE INTO reports(id,user_id,name,gender,bazi_string,content,is_unlocked,unlock_type)VALUES(?,?,?,?,?,?,?,?)')
-              .bind(rid,authUser.id,input.name||'',input.gender||'',input.baziString,content,freeUnlock?1:0,freeUnlock?'free_promo':null).run();
+              .bind(rid,authUser.id,input.name||'',input.gender||'',input.baziString,content,0,null).run();
           }catch(e){}
         }
-        const preview=getDisplayContent(content,freeUnlock);
+        const preview=getDisplayContent(content,false);
         return jsonResponse({success:true,data:{
           reportId:rid,
           fullContent:cleanReportContent(content),
@@ -1282,7 +1280,7 @@ export default {
           baziString:pillars.map(p=>p.gan+p.zhi).join(' '),
           dayGan:pillars[2].gan,
           dayWuxing:GAN_WUXING[pillars[2].gan],
-          isUnlocked:freeUnlock,
+          isUnlocked:false,
         }},200,cors);
       }catch(err){return jsonResponse({error:err.message},500,cors);}
     }

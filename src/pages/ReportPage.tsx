@@ -92,12 +92,12 @@ export default function ReportPage() {
   useEffect(() => { loadReport().finally(() => setLoading(false)) }, [loadReport])
 
   useEffect(() => {
-    if (!user || !isUnlocked || !id) return
+    if (!user || !id) return
     fetch(`${API}/reports/${id}/claim`, {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + user.token },
     }).catch(() => {})
-  }, [user, isUnlocked, id])
+  }, [user, id])
 
   useEffect(() => {
     fetch(API + '/config/pricing')
@@ -227,7 +227,7 @@ export default function ReportPage() {
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link to="/" className="p-2 -ml-2 text-slate-500 hover:text-slate-700"><ArrowLeft className="w-5 h-5" /></Link>
-            <h1 className="text-lg font-semibold text-slate-900">八字命理报告</h1>
+            <h1 className="text-lg font-semibold text-slate-900">职业探索报告</h1>
           </div>
           {!user && (
             <Link to="/login" className="text-xs text-purple-600 hover:text-purple-700">登录保存</Link>
@@ -272,10 +272,10 @@ export default function ReportPage() {
             <div className="relative">
               <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-transparent to-white pointer-events-none" />
               <div className="bg-white pt-4 pb-8 px-5 text-center border-t border-slate-100">
-                <h3 className="text-lg font-bold text-slate-900 mb-1">解锁完整10模块报告</h3>
+                <h3 className="text-lg font-bold text-slate-900 mb-1">解锁后 5 模块（模块 6–10）</h3>
                 <p className="text-sm text-slate-500 mb-4">
-                  ¥{pricing?.priceYuan || '19.90'}
-                  {isFreePeriod && ' · 限时免费至2026年7月31日'}
+                  ¥{pricing?.priceYuan || '19.90'} · 支付宝扫码支付
+                  {isFreePeriod && ' · 或限时免费解锁全部（至2026年7月31日）'}
                 </p>
 
                 {isFreePeriod ? (

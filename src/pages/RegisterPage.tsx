@@ -1,17 +1,19 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import toast from 'react-hot-toast'
 
 export default function RegisterPage() {
   const { register, user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirect = searchParams.get('redirect') || '/reports'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
 
-  if (user) { navigate('/reports', { replace: true }); return null }
+  if (user) { navigate(redirect, { replace: true }); return null }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -19,7 +21,7 @@ export default function RegisterPage() {
     if (password !== confirm) { toast.error('两次密码不一致'); return }
     if (password.length < 6) { toast.error('密码至少6位'); return }
     setLoading(true)
-    try { await register(email.trim(), password); toast.success('注册成功，请登录'); navigate('/login', { replace: true }) }
+    try { await register(email.trim(), password); toast.success('注册成功，请登录'); navigate(`/login?redirect=${encodeURIComponent(redirect)}`, { replace: true }) }
     catch (err: any) { toast.error(err.message) }
     finally { setLoading(false) }
   }
@@ -28,8 +30,8 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-900">知命择业</h1>
-          <p className="text-slate-500 text-sm mt-1">注册账号，保存你的八字解读</p>
+          <h1 className="text-2xl font-bold text-slate-900">国学智慧·专业/职业探索</h1>
+          <p className="text-slate-500 text-sm mt-1">注册账号，保存你的探索报告</p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
           <div>
@@ -52,7 +54,7 @@ export default function RegisterPage() {
             {loading ? '注册中...' : '注册'}
           </button>
           <p className="text-center text-xs text-slate-400">
-            已有账号？<Link to="/login" className="text-purple-600 hover:underline">登录</Link>
+            已有账号？<Link to={`/login?redirect=${encodeURIComponent(redirect)}`} className="text-purple-600 hover:underline">登录</Link>
           </p>
         </form>
       </div>
