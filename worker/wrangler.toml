@@ -8,6 +8,7 @@ command = "npm install"
 
 [vars]
 ALLOW_PROBE_DEV_AUTH = "true"
+workers_dev = true
 
 [[kv_namespaces]]
 binding = "BAZI_KV"

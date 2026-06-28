@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "/api/:path*"
+      "destination": "https://fortell365-api.terencexu2521.workers.dev/:path*"
     },
     {
       "source": "/assets/(.*)",

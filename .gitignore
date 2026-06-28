@@ -26,4 +26,6 @@ chi_sim.traineddata
 .vercel
 worker/.wrangler
 worker/node_modules
+miniprogram/node_modules
+miniprogram/miniprogram_npm
 miniprogram/project.private.config.json

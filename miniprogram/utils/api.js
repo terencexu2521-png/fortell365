@@ -1,4 +1,10 @@
-const { API_BASE, USE_DEV_LOGIN } = require('../config.js');
+const { API_BASE, API_BASE_FALLBACK, USE_DEV_LOGIN } = require('../config.js');
+
+function getApiBases() {
+  const bases = [API_BASE];
+  if (API_BASE_FALLBACK && API_BASE_FALLBACK !== API_BASE) bases.push(API_BASE_FALLBACK);
+  return bases;
+}
 
 function getToken() {
   return wx.getStorageSync('token') || '';
@@ -29,29 +35,39 @@ function request(path, options = {}) {
     const token = getToken();
     if (token) header.Authorization = 'Bearer ' + token;
   }
+  const bases = getApiBases();
   return new Promise((resolve, reject) => {
-    wx.request({
-      url: API_BASE + path,
-      method,
-      data,
-      header,
-      success(res) {
-        const body = res.data;
-        if (res.statusCode >= 200 && res.statusCode < 300 && body && body.success === true) {
-          resolve(body);
-          return;
-        }
-        reject(new Error((body && body.error) || `请求失败(${res.statusCode || ''})`));
-      },
-      fail(err) {
-        const msg = err.errMsg || '';
-        if (msg.includes('request:fail')) {
-          reject(new Error('网络请求失败，请确认已勾选「不校验合法域名」，或稍后重试'));
-          return;
-        }
-        reject(new Error(msg || '网络错误'));
-      },
-    });
+    let index = 0;
+    const tryNext = (err) => {
+      if (index >= bases.length) {
+        reject(err);
+        return;
+      }
+      const base = bases[index++];
+      wx.request({
+        url: base + path,
+        method,
+        data,
+        header,
+        success(res) {
+          const body = res.data;
+          if (res.statusCode >= 200 && res.statusCode < 300 && body && body.success === true) {
+            resolve(body);
+            return;
+          }
+          tryNext(new Error((body && body.error) || `请求失败(${res.statusCode || ''})`));
+        },
+        fail(err) {
+          const msg = err.errMsg || '';
+          if (msg.includes('request:fail')) {
+            tryNext(new Error('网络请求失败，请确认已勾选「不校验合法域名」'));
+            return;
+          }
+          tryNext(new Error(msg || '网络错误'));
+        },
+      });
+    };
+    tryNext(new Error('网络错误'));
   });
 }
 

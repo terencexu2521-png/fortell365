@@ -109,11 +109,11 @@ Page({
 
     this.setData({ loading: true });
     try {
-      const api = require('../../utils/api.js');
-      const res = await api.paipan(body);
+      const { computePaipan } = require('../../utils/paipan.js');
+      const result = computePaipan(body);
       const app = getApp();
       app.globalData.birthForm = body;
-      app.globalData.paipanResult = res.data;
+      app.globalData.paipanResult = result;
       wx.navigateTo({ url: '/pages/confirm/confirm' });
     } catch (err) {
       wx.showToast({ title: err.message || '排盘失败', icon: 'none' });

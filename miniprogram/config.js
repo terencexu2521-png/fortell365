@@ -1,4 +1,4 @@
-/** 小程序 API 配置 — 走 fortell365.com 代理，国内访问比 workers.dev 更稳定 */
+/** 小程序 API — 走 fortell365.com 代理（勿直连 workers.dev） */
 module.exports = {
   API_BASE: 'https://fortell365.com/api',
   PRODUCT_NAME: '国学智慧·专业/职业探索',
