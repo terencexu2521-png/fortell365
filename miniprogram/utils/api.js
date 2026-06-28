@@ -1,4 +1,5 @@
-const { API_BASE, API_BASE_FALLBACK, USE_DEV_LOGIN } = require('../config.js');
+const { API_BASE, API_BASE_FALLBACK, USE_DEV_LOGIN, USE_OFFLINE_PROBE } = require('../config.js');
+const probeMock = require('./probeMock.js');
 
 function getApiBases() {
   const bases = [API_BASE];
@@ -22,7 +23,7 @@ function getProbeDeviceId() {
 function saveAuthResponse(body) {
   const payload = body && body.data;
   if (!payload || !payload.token) {
-    throw new Error('登录失败：服务器未返回有效 token（可能需更新 API）');
+    throw new Error('登录失败：服务器未返回有效 token');
   }
   wx.setStorageSync('token', payload.token);
   return payload;
@@ -71,15 +72,26 @@ function request(path, options = {}) {
   });
 }
 
+async function withOfflineFallback(fn, mockFn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (USE_DEV_LOGIN && USE_OFFLINE_PROBE && probeMock.shouldUseOffline(err)) {
+      return mockFn();
+    }
+    throw err;
+  }
+}
+
 function wechatLoginWithCode(code) {
   return request('/auth/wechat', { method: 'POST', data: { code } });
 }
 
 function devProbeLogin() {
-  return request('/auth/dev-probe', {
-    method: 'POST',
-    data: { probeId: getProbeDeviceId() },
-  });
+  return withOfflineFallback(
+    () => request('/auth/dev-probe', { method: 'POST', data: { probeId: getProbeDeviceId() } }),
+    () => probeMock.mockDevLogin()
+  );
 }
 
 function ensureLogin() {
@@ -122,10 +134,18 @@ module.exports = {
   wechatLogin: wechatLoginWithCode,
   devProbeLogin,
   ensureLogin,
-  generate: (body) => request('/generate', { method: 'POST', data: body, auth: true }),
-  claimReport: (id) => request('/reports/' + id + '/claim', { method: 'POST', auth: true }),
+  generate: (body) =>
+    withOfflineFallback(
+      () => request('/generate', { method: 'POST', data: body, auth: true }),
+      () => probeMock.mockGenerate(body)
+    ),
+  claimReport: (id) => request('/reports/' + id + '/claim', { method: 'POST', auth: true }).catch(() => ({ success: true })),
   listReports: () => request('/reports', { auth: true }),
-  getReport: (id) => request('/reports/' + id, { auth: true }),
+  getReport: (id) =>
+    withOfflineFallback(
+      () => request('/reports/' + id, { auth: true }),
+      () => probeMock.mockGetReport(id)
+    ),
   getToken,
   setToken(token) {
     wx.setStorageSync('token', token);

@@ -1,4 +1,4 @@
-const { Solar, Lunar } = require('../libs/lunar-javascript');
+const { Solar, Lunar } = require('../libs/lunar-javascript/lunar.js');
 
 const PILLAR_NAMES = ['年柱', '月柱', '日柱', '时柱'];
 

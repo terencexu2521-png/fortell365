@@ -1,28 +1,60 @@
+const privacy = require('../../data/privacy.js');
+
 Page({
   data: {
-    agreed: false,
     features: null,
+    showPrivacyModal: false,
+    pendingAction: '',
+    privacySummary: privacy.summary,
   },
   onLoad() {
-    const agreed = !!wx.getStorageSync('privacy_agreed');
-    this.setData({ agreed });
     const api = require('../../utils/api.js');
     api.getFeatures().then((res) => {
       this.setData({ features: res.data });
     }).catch(() => {});
   },
-  onAgreeChange(e) {
-    this.setData({ agreed: e.detail.value.length > 0 });
-  },
   startExplore() {
-    if (!this.data.agreed) {
-      wx.showToast({ title: '请先同意隐私说明', icon: 'none' });
+    if (wx.getStorageSync('privacy_agreed')) {
+      wx.navigateTo({ url: '/pages/input/input' });
       return;
     }
-    wx.setStorageSync('privacy_agreed', true);
-    wx.navigateTo({ url: '/pages/input/input' });
+    this.setData({ showPrivacyModal: true, pendingAction: 'explore' });
   },
   goProfile() {
-    wx.navigateTo({ url: '/pages/profile/profile' });
+    if (wx.getStorageSync('privacy_agreed')) {
+      wx.navigateTo({ url: '/pages/profile/profile' });
+      return;
+    }
+    this.setData({ showPrivacyModal: true, pendingAction: 'profile' });
+  },
+  openPrivacyFull() {
+    wx.navigateTo({ url: '/pages/privacy/privacy' });
+  },
+  onPrivacyAgree() {
+    wx.setStorageSync('privacy_agreed', true);
+    wx.setStorageSync('privacy_agreed_at', Date.now());
+    const app = getApp();
+    if (app.globalData.pendingPrivacyResolve) {
+      app.globalData.pendingPrivacyResolve({ event: 'agree', buttonId: 'agree-privacy-btn' });
+      app.globalData.pendingPrivacyResolve = null;
+    }
+    const action = this.data.pendingAction;
+    this.setData({ showPrivacyModal: false, pendingAction: '' });
+    if (action === 'profile') {
+      wx.navigateTo({ url: '/pages/profile/profile' });
+    } else {
+      wx.navigateTo({ url: '/pages/input/input' });
+    }
+  },
+  onPrivacyReject() {
+    this.setData({ showPrivacyModal: false, pendingAction: '' });
+    wx.showModal({
+      title: '无法继续',
+      content: '您拒绝了隐私保护指引，无法使用排盘与报告功能。如需使用，请重新点击并选择同意。',
+      showCancel: false,
+    });
+  },
+  closePrivacyModal() {
+    this.setData({ showPrivacyModal: false, pendingAction: '' });
   },
 });

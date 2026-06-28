@@ -4,7 +4,14 @@ App({
     paipanResult: null,
   },
   onLaunch() {
-    const agreed = wx.getStorageSync('privacy_agreed');
-    if (agreed) this.globalData.privacyAgreed = true;
+    if (typeof wx.onNeedPrivacyAuthorization === 'function') {
+      wx.onNeedPrivacyAuthorization((resolve) => {
+        if (wx.getStorageSync('privacy_agreed')) {
+          resolve({ event: 'agree', buttonId: 'agree-privacy-btn' });
+        } else {
+          this.globalData.pendingPrivacyResolve = resolve;
+        }
+      });
+    }
   },
 });

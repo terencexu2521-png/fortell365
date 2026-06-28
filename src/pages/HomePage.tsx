@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Sparkles, Sun, Award, BookOpen, Briefcase, ArrowRight, User } from 'lucide-react'
+import { Sparkles, Sun, BookOpen, Briefcase, ArrowRight, User } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 
 export default function HomePage() {
@@ -11,7 +11,7 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-purple-600" />
-            <span className="text-lg font-bold text-slate-900">八字专业职业解读</span>
+            <span className="text-lg font-bold text-slate-900">国学智慧·专业/职业探索</span>
           </div>
           <div className="flex items-center gap-2">
             {user ? (
@@ -35,11 +35,11 @@ export default function HomePage() {
       <section className="pt-20 pb-8 px-4">
         <div className="max-w-2xl mx-auto text-center">
           <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4 leading-tight">
-            你的八字里，<br />
-            藏着<span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">最适合的方向</span>
+            国学智慧<br />
+            <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">专业 / 职业探索</span>
           </h1>
           <p className="text-slate-500 mb-6 text-lg">
-            用千年国学智慧 + AI，深度解析你的命理天赋与人生轨迹
+            以传统文化档案为参照，帮你看清特质方向与专业、职业可能
           </p>
         </div>
       </section>
@@ -49,9 +49,9 @@ export default function HomePage() {
         <div className="max-w-xl mx-auto">
           <div className="grid grid-cols-3 gap-3 mb-8">
             {[
-              { step: '1', title: '获取八字', desc: '小巫排盘截图上传', icon: BookOpen },
-              { step: '2', title: 'AI 识别', desc: '图片自动提取八字', icon: Award },
-              { step: '3', title: '查看解读', desc: '10大模块深度分析', icon: Briefcase },
+              { step: '1', title: '填写信息', desc: '姓名、性别、出生时间与地点', icon: BookOpen },
+              { step: '2', title: '确认排盘', desc: '自动计算并核对四柱', icon: Sun },
+              { step: '3', title: '探索报告', desc: '专业与职业方向解读', icon: Briefcase },
             ].map((item) => (
               <div key={item.step} className="text-center">
                 <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
@@ -141,7 +141,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="py-6 px-4 border-t border-slate-100 text-center">
-        <p className="text-xs text-slate-400">八字专业职业解读 | 仅供娱乐参考</p>
+        <p className="text-xs text-slate-400">国学智慧·专业/职业探索 | 仅供文化学习与自我探索参考</p>
       </footer>
     </div>
   )

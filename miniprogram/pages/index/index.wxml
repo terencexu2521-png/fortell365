@@ -30,19 +30,26 @@
 
   <view class="card privacy-card">
     <view class="label">隐私与合规</view>
-    <view class="subtitle privacy-text">
-      我们收集姓名、出生信息与出生地点，用于生成文化档案与职业探索报告。数据加密传输，不会出售给第三方。
-    </view>
-    <checkbox-group bindchange="onAgreeChange">
-      <label class="agree-row">
-        <checkbox value="agree" checked="{{agreed}}" color="#8b5cf6" />
-        <text>我已阅读并同意上述说明</text>
-      </label>
-    </checkbox-group>
+    <view class="subtitle privacy-text">{{privacySummary}}</view>
+    <view class="privacy-link" bindtap="openPrivacyFull">查看《隐私保护指引》全文</view>
   </view>
 
-  <button class="btn-primary hero-btn" bindtap="startExplore" disabled="{{!agreed}}">开始探索</button>
+  <button class="btn-primary hero-btn" bindtap="startExplore">开始探索</button>
   <button class="btn-ghost" bindtap="goProfile">我的报告</button>
 
   <view class="footer-note">仅供文化学习与自我探索参考</view>
+</view>
+
+<view class="privacy-mask" wx:if="{{showPrivacyModal}}" catchtouchmove="true">
+  <view class="privacy-dialog">
+    <view class="privacy-dialog-title">隐私保护指引</view>
+    <scroll-view scroll-y class="privacy-dialog-body">
+      <text class="privacy-dialog-text">{{privacySummary}}</text>
+      <view class="privacy-link in-dialog" bindtap="openPrivacyFull">阅读完整指引</view>
+    </scroll-view>
+    <view class="privacy-dialog-actions">
+      <button class="btn-reject" bindtap="onPrivacyReject">拒绝</button>
+      <button class="btn-agree" id="agree-privacy-btn" bindtap="onPrivacyAgree">同意</button>
+    </view>
+  </view>
 </view>

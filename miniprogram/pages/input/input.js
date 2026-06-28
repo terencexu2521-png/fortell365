@@ -24,6 +24,11 @@ Page({
   },
 
   onLoad() {
+    if (!wx.getStorageSync('privacy_agreed')) {
+      wx.showToast({ title: '请先同意隐私指引', icon: 'none' });
+      setTimeout(() => wx.navigateBack(), 1200);
+      return;
+    }
     this.syncRegion(4, 0, 0);
   },
 

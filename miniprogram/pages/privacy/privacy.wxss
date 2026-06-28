@@ -1,0 +1,18 @@
+.privacy-page {
+  padding: 32rpx;
+  min-height: 100vh;
+  background: #faf8ff;
+}
+
+.privacy-full {
+  font-size: 26rpx;
+  line-height: 1.8;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+.privacy-meta {
+  margin-top: 40rpx;
+  font-size: 24rpx;
+  color: #64748b;
+}

@@ -24,6 +24,6 @@ export default async function handler(req, res) {
     if (upstreamType) res.setHeader('Content-Type', upstreamType);
     res.send(body);
   } catch (err) {
-    res.status(502).json({ error: 'API 代理失败: ' + err.message });
+    res.status(502).json({ success: false, error: 'API 代理失败: ' + err.message });
   }
 }

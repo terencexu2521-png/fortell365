@@ -125,3 +125,78 @@
   color: #94a3b8;
   margin-top: 32rpx;
 }
+
+.privacy-link {
+  font-size: 26rpx;
+  color: #7c3aed;
+  text-decoration: underline;
+  margin-top: 12rpx;
+}
+
+.privacy-link.in-dialog {
+  margin-top: 24rpx;
+  display: block;
+}
+
+.privacy-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+}
+
+.privacy-dialog {
+  width: 100%;
+  max-height: 78vh;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+
+.privacy-dialog-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1e1b4b;
+  margin-bottom: 20rpx;
+}
+
+.privacy-dialog-body {
+  max-height: 46vh;
+}
+
+.privacy-dialog-text {
+  font-size: 26rpx;
+  line-height: 1.75;
+  color: #475569;
+}
+
+.privacy-dialog-actions {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 28rpx;
+}
+
+.btn-reject,
+.btn-agree {
+  flex: 1;
+  font-size: 28rpx;
+  border-radius: 16rpx;
+}
+
+.btn-reject {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.btn-agree {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: #fff;
+}

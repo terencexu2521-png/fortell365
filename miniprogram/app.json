@@ -4,7 +4,8 @@
     "pages/input/input",
     "pages/confirm/confirm",
     "pages/report/report",
-    "pages/profile/profile"
+    "pages/profile/profile",
+    "pages/privacy/privacy"
   ],
   "window": {
     "navigationBarBackgroundColor": "#2d1b4e",
@@ -13,5 +14,6 @@
     "backgroundColor": "#faf8ff"
   },
   "style": "v2",
-  "sitemapLocation": "sitemap.json"
+  "sitemapLocation": "sitemap.json",
+  "__usePrivacyCheck__": true
 }
