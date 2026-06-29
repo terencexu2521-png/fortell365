@@ -23,7 +23,17 @@ export function appendReportFooter(content: string): string {
 }
 
 export function cleanReportContent(content: string): string {
-  return appendReportFooter(applyComplianceFilter(stripReportInternal(content)))
+  const lines = appendReportFooter(applyComplianceFilter(stripReportInternal(content)))
+    .split('\n')
+    .map((line) => line.replace(/（详写）/g, ''))
+    .filter((line) => !isMarkdownTableSeparator(line))
+  return lines.join('\n')
+}
+
+export function isMarkdownTableSeparator(line: string): boolean {
+  const t = line.trim()
+  if (!t.startsWith('|') || !t.endsWith('|')) return false
+  return t.replace(/\|/g, '').replace(/[-:\s]/g, '').length === 0
 }
 
 export function splitReportModules(content: string): string[] {

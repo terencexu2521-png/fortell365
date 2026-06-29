@@ -3,6 +3,7 @@
 // v3.6: 小程序 — 排盘 / 微信登录 / 功能开关
 
 import { computePaipan } from './paipan.js';
+import { alipayConfigured, createOnlinePayUrl, verifyNotify, parseNotifyBody, isMobileUserAgent } from './alipay.js';
 
 const GAN = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
 const ZHI = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
@@ -76,8 +77,8 @@ function getDiZhiRels(zhiArr){
 function genId(){return'rpt_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);}
 function genOrderId(){return'ord_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);}
 
-const PRICE_CENTS=1990;
-const FREE_DEADLINE_ISO='2026-07-31T23:59:59+08:00';
+const PRICE_CENTS=10; // 测试价 ¥0.10，正式上线改回 1990
+const FREE_DEADLINE_ISO='2020-01-01T00:00:00+08:00'; // 测试收费流程时关闭限时全免，上线前改回 2026-07-31
 const ALIPAY_QR_URL='https://fortell365.com/pay/alipay-qr.png';
 const FREE_MODULE_COUNT=5;
 const MODULE_HEADER_RE=/^## (?:模块[一二三四五六七八九十\d]+[：:]|(?:[一二三四五六七八九十]+、))/;
@@ -160,7 +161,7 @@ function isFreePeriodNow(){
 }
 
 function cleanReportContent(content){
-  return appendReportFooter(applyComplianceFilter(stripReportInternal(content)));
+  return appendReportFooter(applyComplianceFilter(stripReportInternal(content))).replace(/（详写）/g,'');
 }
 
 function splitReportModules(content){
@@ -197,6 +198,32 @@ async function saveKvReport(env,report){
   await env.BAZI_KV.put('report:'+report.id,JSON.stringify(report));
 }
 
+async function saveOrderKv(env,order){
+  await env.BAZI_KV.put('order:'+order.id,JSON.stringify(order),{expirationTtl:604800});
+}
+
+async function getOrderKv(env,oid){
+  const raw=await env.BAZI_KV.get('order:'+oid);
+  if(!raw)return null;
+  try{return JSON.parse(raw);}catch(e){return null;}
+}
+
+async function markOrderPaid(env,oid,reportId){
+  await unlockReport(env,reportId,'paid',oid);
+  const order=await getOrderKv(env,oid);
+  if(order){
+    order.status='paid';
+    order.paidAt=Date.now();
+    await saveOrderKv(env,order);
+  }
+  if(env.DB){
+    try{
+      await env.DB.prepare('UPDATE orders SET status=?,paid_at=datetime(\'now\') WHERE id=? AND report_id=?')
+        .bind('paid',oid,reportId).run();
+    }catch(e){}
+  }
+}
+
 async function unlockReport(env,rid,unlockType,orderId=null){
   const kv=await getKvReport(env,rid);
   if(kv){
@@ -223,11 +250,12 @@ function pricingPayload(){
   };
 }
 
-function featuresPayload(){
+function featuresPayload(env){
   return {
     paipan:true,
     report:true,
-    payment:false,
+    payment:alipayConfigured(env),
+    paymentMode:alipayConfigured(env)?'alipay_online':'static_qr',
     freeModuleCount:FREE_MODULE_COUNT,
     isFreePeriod:isFreePeriodNow(),
     freeDeadline:FREE_DEADLINE_ISO,
@@ -438,8 +466,8 @@ ${dayun.map((d,i)=>{return `**${d.startAge}-${d.endAge}岁 [${d.quanpin}]（${d.
 ### 专业分析
 日主五行+最强十神+用神方向→核心天赋领域。五行→行业映射有理有据。
 **本产品是专业/职业探索工具，本章必须重点展开：**
-1. **适合专业（详写）**：列出4-6个具体大学专业/学科方向（如计算机科学、金融学、心理学、建筑学、新闻传播、护理学等），每个专业用2-3句说明：为何与本命五行、十神、用神契合；该专业典型课程/训练方式是否匹配你的学习风格。
-2. **适合职业（详写）**：列出4-6个具体职业/岗位（如产品经理、教师、律师、设计师、数据分析师、创业者等），每个职业用2-3句说明：岗位日常做什么、需要哪些能力、你的命盘哪些特质会在该岗位上被放大。
+1. **适合专业**：列出4-6个具体大学专业/学科方向（如计算机科学、金融学、心理学、建筑学、新闻传播、护理学等），每个专业用2-3句说明：为何与本命五行、十神、用神契合；该专业典型课程/训练方式是否匹配你的学习风格。
+2. **适合职业**：列出4-6个具体职业/岗位（如产品经理、教师、律师、设计师、数据分析师、创业者等），每个职业用2-3句说明：岗位日常做什么、需要哪些能力、你的命盘哪些特质会在该岗位上被放大。
 3. **不太适合的方向**：点1-2个专业或职业类型，用"可能"开头，说明原因，不给绝对判决。
 
 ### 白话解读
@@ -1094,7 +1122,7 @@ export default {
       return jsonResponse({success:true,data:pricingPayload()},200,cors);
     }
     if(request.method==='GET' && url.pathname==='/config/features'){
-      return jsonResponse({success:true,data:featuresPayload()},200,cors);
+      return jsonResponse({success:true,data:featuresPayload(env)},200,cors);
     }
 
     if(request.method==='POST' && url.pathname==='/auth/wechat'){
@@ -1161,17 +1189,54 @@ export default {
         if(kv.isUnlocked)return jsonResponse({success:true,data:{alreadyUnlocked:true,reportId}},200,cors);
         const p=parseAuth(request);
         const oid=genOrderId();
+        const totalYuan=(PRICE_CENTS/100).toFixed(2);
+        await saveOrderKv(env,{id:oid,reportId,userId:p?.id||null,amount:PRICE_CENTS,status:'pending',createdAt:Date.now()});
         if(env.DB){
           try{
             await env.DB.prepare('INSERT INTO orders(id,report_id,user_id,amount,status)VALUES(?,?,?,?,?)')
               .bind(oid,reportId,p?.id||null,PRICE_CENTS,'pending').run();
           }catch(e){}
         }
+        let paymentMode='static_qr';
+        let payUrl=null;
+        if(alipayConfigured(env)){
+          try{
+            const ua=request.headers.get('User-Agent')||'';
+            payUrl=await createOnlinePayUrl(env,{
+              outTradeNo:oid,totalYuan,subject:'Fortell365职业探索报告',
+              returnUrl:`https://fortell365.com/report/${reportId}?order=${oid}`,
+              isMobile:isMobileUserAgent(ua),
+            });
+            paymentMode='alipay_online';
+          }catch(e){
+            console.error('alipay online pay failed',e.message);
+          }
+        }
         return jsonResponse({success:true,data:{
-          orderId:oid,reportId,amount:PRICE_CENTS,priceYuan:'19.90',
-          alipayQrUrl:ALIPAY_QR_URL,status:'pending',
+          orderId:oid,reportId,amount:PRICE_CENTS,priceYuan:totalYuan,
+          alipayQrUrl:ALIPAY_QR_URL,status:'pending',paymentMode,payUrl,
+          autoConfirm:paymentMode==='alipay_online',
         }},200,cors);
       }catch(err){return jsonResponse({error:'创建订单失败:'+err.message},500,cors);}
+    }
+
+    if(request.method==='POST' && url.pathname==='/payments/alipay/notify'){
+      try {
+        const raw=await request.text();
+        const params=parseNotifyBody(raw);
+        if(!(await verifyNotify(env,params)))return new Response('fail',{status:400});
+        const tradeStatus=params.trade_status;
+        if(tradeStatus!=='TRADE_SUCCESS'&&tradeStatus!=='TRADE_FINISHED')return new Response('success');
+        const oid=params.out_trade_no;
+        const order=await getOrderKv(env,oid);
+        if(!order)return new Response('success');
+        if(order.status==='paid')return new Response('success');
+        await markOrderPaid(env,oid,order.reportId);
+        return new Response('success');
+      }catch(err){
+        console.error('alipay notify error',err.message);
+        return new Response('fail',{status:500});
+      }
     }
 
     if(request.method==='POST' && url.pathname.match(/^\/orders\/[^/]+\/confirm-paid$/)){
@@ -1181,13 +1246,7 @@ export default {
         if(!reportId)return jsonResponse({error:'请提供 reportId'},400,cors);
         const kv=await getKvReport(env,reportId);
         if(!kv)return jsonResponse({error:'报告不存在'},404,cors);
-        if(env.DB){
-          try{
-            await env.DB.prepare('UPDATE orders SET status=?,paid_at=datetime(\'now\') WHERE id=? AND report_id=?')
-              .bind('paid',oid,reportId).run();
-          }catch(e){}
-        }
-        await unlockReport(env,reportId,'paid',oid);
+        await markOrderPaid(env,oid,reportId);
         return jsonResponse({success:true,data:{orderId:oid,reportId,isUnlocked:true,unlockType:'paid'}},200,cors);
       }catch(err){return jsonResponse({error:'确认支付失败:'+err.message},500,cors);}
     }
@@ -1196,9 +1255,17 @@ export default {
       try {
         const oid=url.pathname.split('/')[2];
         if(!oid)return jsonResponse({error:'请提供订单ID'},400,cors);
-        if(!env.DB)return jsonResponse({success:true,data:{status:'unknown'}},200,cors);
-        const order=await env.DB.prepare('SELECT id,report_id,status,amount,created_at,paid_at FROM orders WHERE id=?').bind(oid).first();
-        return order?jsonResponse({success:true,data:order},200,cors):jsonResponse({error:'订单不存在'},404,cors);
+        let order=await getOrderKv(env,oid);
+        if(!order&&env.DB){
+          order=await env.DB.prepare('SELECT id,report_id,status,amount,created_at,paid_at FROM orders WHERE id=?').bind(oid).first();
+          if(order)order={id:order.id,reportId:order.report_id,status:order.status,amount:order.amount,createdAt:order.created_at,paidAt:order.paid_at};
+        }
+        if(!order)return jsonResponse({error:'订单不存在'},404,cors);
+        const kv=await getKvReport(env,order.reportId);
+        return jsonResponse({success:true,data:{
+          orderId:order.id,reportId:order.reportId,status:order.status,amount:order.amount,
+          isUnlocked:!!(kv&&kv.isUnlocked),
+        }},200,cors);
       }catch(err){return jsonResponse({error:'查询失败:'+err.message},500,cors);}
     }
 
@@ -1284,7 +1351,7 @@ export default {
         }},200,cors);
       }catch(err){return jsonResponse({error:err.message},500,cors);}
     }
-    return jsonResponse({status:'ok',version:'3.6',features:featuresPayload()},200,cors);
+    return jsonResponse({status:'ok',version:'3.6',features:featuresPayload(env)},200,cors);
   }
 };
 

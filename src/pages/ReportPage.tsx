@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Loader2, CheckCircle, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth, API } from '../lib/auth'
-import { cleanReportContent, getDisplayContent } from '../lib/reportContent'
+import { cleanReportContent, getDisplayContent, isMarkdownTableSeparator } from '../lib/reportContent'
 
 const ALIPAY_QR = '/pay/alipay-qr.png'
 
@@ -25,6 +25,7 @@ interface PricingConfig {
 
 export default function ReportPage() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -32,7 +33,10 @@ export default function ReportPage() {
   const [pricing, setPricing] = useState<PricingConfig | null>(null)
   const [paying, setPaying] = useState(false)
   const [orderId, setOrderId] = useState<string | null>(null)
+  const [paymentMode, setPaymentMode] = useState<'static_qr' | 'alipay_online'>('static_qr')
+  const [waitingPay, setWaitingPay] = useState(false)
   const [showLoginHint, setShowLoginHint] = useState(false)
+  const pollRef = useRef<number | null>(null)
 
   const loadReport = useCallback(async () => {
     if (!id) return
@@ -92,6 +96,14 @@ export default function ReportPage() {
   useEffect(() => { loadReport().finally(() => setLoading(false)) }, [loadReport])
 
   useEffect(() => {
+    const orderFromUrl = searchParams.get('order')
+    if (orderFromUrl) {
+      setOrderId(orderFromUrl)
+      setPaymentMode('alipay_online')
+    }
+  }, [searchParams])
+
+  useEffect(() => {
     if (!user || !id) return
     fetch(`${API}/reports/${id}/claim`, {
       method: 'POST',
@@ -146,6 +158,39 @@ export default function ReportPage() {
     }
   }
 
+  const applyPaidUnlock = useCallback(async (oid: string) => {
+    if (!id || !report) return
+    setIsUnlocked(true)
+    setWaitingPay(false)
+    setReport(r => r ? { ...r, isUnlocked: true, unlockType: 'paid' } : r)
+    localStorage.setItem(`report_${id}`, JSON.stringify({
+      ...JSON.parse(localStorage.getItem(`report_${id}`) || '{}'),
+      isUnlocked: true, unlockType: 'paid',
+    }))
+    await syncUnlockToAccount('paid', oid)
+    if (!user) setShowLoginHint(true)
+    toast.success('支付成功，报告已自动解锁')
+  }, [id, report, user])
+
+  useEffect(() => {
+    if (!orderId || isUnlocked || paymentMode !== 'alipay_online') return
+    setWaitingPay(true)
+    const poll = async () => {
+      try {
+        const resp = await fetch(`${API}/orders/${orderId}`)
+        const data = await resp.json()
+        if (data.success && (data.data.status === 'paid' || data.data.isUnlocked)) {
+          await applyPaidUnlock(orderId)
+        }
+      } catch { /* retry */ }
+    }
+    poll()
+    pollRef.current = window.setInterval(poll, 3000)
+    return () => {
+      if (pollRef.current) window.clearInterval(pollRef.current)
+    }
+  }, [orderId, isUnlocked, paymentMode, applyPaidUnlock])
+
   const handleStartPay = async () => {
     if (!id || !report) return
     setPaying(true)
@@ -163,7 +208,13 @@ export default function ReportPage() {
         toast.success('报告已解锁')
         return
       }
+      const mode = data.data.paymentMode === 'alipay_online' ? 'alipay_online' : 'static_qr'
       setOrderId(data.data.orderId)
+      setPaymentMode(mode)
+      if (mode === 'alipay_online' && data.data.payUrl) {
+        window.location.href = data.data.payUrl
+        return
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : '创建订单失败')
     } finally {
@@ -181,11 +232,7 @@ export default function ReportPage() {
       })
       const data = await resp.json()
       if (!resp.ok || !data.success) throw new Error(data.error || '确认失败')
-      setIsUnlocked(true)
-      setReport(r => r ? { ...r, isUnlocked: true, unlockType: 'paid' } : r)
-      await syncUnlockToAccount('paid', orderId)
-      if (!user) setShowLoginHint(true)
-      toast.success('解锁成功！')
+      await applyPaidUnlock(orderId)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : '确认失败')
     }
@@ -201,6 +248,7 @@ export default function ReportPage() {
       if (line.startsWith('> '))
         return <blockquote key={i} className="border-l-4 border-amber-400 bg-amber-50 px-3 py-2 my-2 text-sm text-slate-500 italic rounded-r-lg">{line.replace(/^> /, '')}</blockquote>
       if (line.startsWith('```')) return null
+      if (isMarkdownTableSeparator(line)) return null
       if (line.trim())
         return <p key={i} className="text-slate-600 leading-relaxed my-1.5 text-sm">{line.replace(/\*\*/g, '')}</p>
       return <div key={i} className="h-2" />
@@ -275,7 +323,7 @@ export default function ReportPage() {
               <div className="bg-white pt-4 pb-8 px-5 text-center border-t border-slate-100">
                 <h3 className="text-lg font-bold text-slate-900 mb-1">解锁后 5 模块（模块 6–10）</h3>
                 <p className="text-sm text-slate-500 mb-4">
-                  ¥{pricing?.priceYuan || '19.90'} · 支付宝扫码支付
+                  ¥{priceYuan} · 支付宝支付
                   {isFreePeriod && ' · 或限时免费解锁全部（至2026年7月31日）'}
                 </p>
 
@@ -289,20 +337,45 @@ export default function ReportPage() {
                     {!orderId ? (
                       <button onClick={handleStartPay} disabled={paying}
                         className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
-                        {paying ? '准备中…' : '支付 ¥19.90 解锁'}
+                        {paying ? '准备中…' : `支付 ¥${priceYuan} 解锁`}
                       </button>
                     ) : (
                       <>
-                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                          <p className="text-sm font-medium text-slate-700 mb-3">请支付宝扫码支付 ¥19.90</p>
-                          <img src={qrUrl.startsWith('http') ? qrUrl : ALIPAY_QR} alt="支付宝收款码"
-                            className="w-44 h-auto mx-auto rounded-lg mb-2" />
-                          <p className="text-xs text-slate-400">打开支付宝 → 扫一扫 → 支付 ¥19.90</p>
-                        </div>
-                        <button onClick={handleConfirmPaid}
-                          className="w-full py-3 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold hover:opacity-90">
-                          我已完成支付，解锁报告
-                        </button>
+                        {paymentMode === 'static_qr' ? (
+                          <>
+                            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                              <p className="text-sm font-medium text-slate-700 mb-1">请支付宝支付 ¥{priceYuan}</p>
+                              {orderId && (
+                                <p className="text-xs text-slate-400 mb-3 font-mono">订单号 {orderId}</p>
+                              )}
+                              <img src={qrUrl.startsWith('http') ? qrUrl : ALIPAY_QR} alt="支付宝收款码"
+                                className="w-44 h-auto mx-auto rounded-lg mb-2" />
+                              <p className="text-xs text-slate-500 leading-relaxed">
+                                长按二维码 → 识别图中二维码 → 在支付宝完成付款 ¥{priceYuan}
+                              </p>
+                            </div>
+                            <button onClick={handleConfirmPaid}
+                              className="w-full py-3 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl font-semibold hover:opacity-90">
+                              我已完成支付，解锁报告
+                            </button>
+                          </>
+                        ) : (
+                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                            <p className="text-sm font-medium text-slate-700 mb-1">正在确认支付结果</p>
+                            {orderId && (
+                              <p className="text-xs text-slate-400 mb-3 font-mono">订单号 {orderId}</p>
+                            )}
+                            <p className="text-xs text-slate-500 mb-3">
+                              {waitingPay ? '支付成功后约 5–30 秒自动解锁' : '支付完成后将自动解锁'}
+                            </p>
+                            {waitingPay && (
+                              <div className="flex items-center justify-center gap-2 text-sm text-slate-500 py-2">
+                                <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+                                正在检测支付结果…
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>

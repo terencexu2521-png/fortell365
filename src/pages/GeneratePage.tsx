@@ -158,7 +158,7 @@ export default function GeneratePage() {
             </div>
           </div>
           <h2 className="text-xl font-bold text-slate-900 mb-2">AI 正在生成探索报告</h2>
-          <p className="text-slate-500 text-sm">预计 20–30 秒，请稍候…</p>
+          <p className="text-slate-500 text-sm">预计20-30秒，人生需要等待，方见花开，请耐心等待…</p>
           <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-400">
             <Loader2 className="w-3 h-3 animate-spin" />分析中
           </div>
