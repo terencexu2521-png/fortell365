@@ -1,0 +1,55 @@
+<view class="home-page">
+  <view class="hero">
+    <view class="hero-badge">国学 · 青年向</view>
+    <view class="hero-title">国学智慧</view>
+    <view class="hero-subtitle">专业 / 职业探索</view>
+    <view class="hero-desc">以传统文化档案为参照，帮你看清特质方向与职业可能</view>
+    <view class="hero-tags">
+      <text class="tag">文化档案</text>
+      <text class="tag">特质分析</text>
+      <text class="tag">职业参考</text>
+    </view>
+  </view>
+
+  <view class="card feature-card">
+    <view class="feature-item">
+      <view class="feature-dot"></view>
+      <view>
+        <view class="feature-title">精准排盘</view>
+        <view class="feature-text">支持公历/农历，时间到分钟，地点到区县</view>
+      </view>
+    </view>
+    <view class="feature-item">
+      <view class="feature-dot"></view>
+      <view>
+        <view class="feature-title">AI 探索报告</view>
+        <view class="feature-text">专业解读 + 白话说明，先预览再深入</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card privacy-card">
+    <view class="label">隐私与合规</view>
+    <view class="subtitle privacy-text">{{privacySummary}}</view>
+    <view class="privacy-link" bindtap="openPrivacyFull">查看《隐私保护指引》全文</view>
+  </view>
+
+  <button class="btn-primary hero-btn" bindtap="startExplore">开始探索</button>
+  <button class="btn-ghost" bindtap="goProfile">我的报告</button>
+
+  <view class="footer-note">仅供文化学习与自我探索参考</view>
+</view>
+
+<view class="privacy-mask" wx:if="{{showPrivacyModal}}" catchtouchmove="true">
+  <view class="privacy-dialog">
+    <view class="privacy-dialog-title">隐私保护指引</view>
+    <scroll-view scroll-y class="privacy-dialog-body">
+      <text class="privacy-dialog-text">{{privacySummary}}</text>
+      <view class="privacy-link in-dialog" bindtap="openPrivacyFull">阅读完整指引</view>
+    </scroll-view>
+    <view class="privacy-dialog-actions">
+      <button class="btn-reject" bindtap="onPrivacyReject">拒绝</button>
+      <button class="btn-agree" id="agree-privacy-btn" bindtap="onPrivacyAgree">同意</button>
+    </view>
+  </view>
+</view>

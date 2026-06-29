@@ -1,0 +1,25 @@
+<view class="container">
+  <view class="card">
+    <view class="title">我的报告</view>
+    <view class="subtitle">登录后可同步查看历史职业探索报告</view>
+  </view>
+
+  <view class="card" wx:if="{{!loggedIn}}">
+    <button class="btn-primary" bindtap="doLogin" loading="{{loading}}">微信登录</button>
+  </view>
+
+  <block wx:else>
+    <view class="card" wx:if="{{reports.length===0}}">
+      <view class="subtitle">暂无报告，去生成一份吧</view>
+      <button class="btn-primary" bindtap="goExplore">开始探索</button>
+    </view>
+
+    <view class="card" wx:for="{{reports}}" wx:key="id" bindtap="openReport" data-id="{{item.id}}">
+      <view class="title" style="font-size:32rpx">{{item.name}}</view>
+      <view class="subtitle">{{item.bazi_string}}</view>
+      <view class="subtitle">{{item.created_at}} · {{item.is_unlocked ? '已解锁' : '预览'}}</view>
+    </view>
+
+    <button class="btn-secondary" bindtap="logout">退出登录</button>
+  </block>
+</view>

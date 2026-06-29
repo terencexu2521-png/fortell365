@@ -1,0 +1,4 @@
+<view class="privacy-page">
+  <text class="privacy-full">{{content}}</text>
+  <view class="privacy-meta">联系邮箱：{{contactEmail}}</view>
+</view>

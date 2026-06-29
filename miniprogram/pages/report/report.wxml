@@ -1,0 +1,17 @@
+<view class="container">
+  <view wx:if="{{loading}}" class="loading">报告生成中，请稍候…</view>
+
+  <block wx:else>
+    <view class="card">
+      <view class="title">职业探索报告</view>
+      <view class="subtitle">{{name}} · {{baziString}}</view>
+      <view class="subtitle" wx:if="{{!isUnlocked}}">探路版 · 可免费预览前 5 个模块</view>
+    </view>
+
+    <view class="card">
+      <rich-text nodes="{{nodes}}"></rich-text>
+    </view>
+
+    <button class="btn-secondary" bindtap="goHome">返回首页</button>
+  </block>
+</view>

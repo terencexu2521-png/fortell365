@@ -3,7 +3,24 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth, API } from '../lib/auth'
 import { Loader2, ArrowLeft, LogOut, FileText } from 'lucide-react'
 
-interface ReportItem { id: string; name: string; gender: string; bazi_string: string; created_at: string }
+interface ReportItem {
+  id: string
+  name: string
+  gender: string
+  bazi_string: string
+  is_unlocked: number
+  unlock_type: string | null
+  created_at: string
+}
+
+function statusBadge(r: ReportItem) {
+  if (r.is_unlocked) {
+    if (r.unlock_type === 'paid') return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">已付费</span>
+    if (r.unlock_type === 'free_promo') return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">限时免费</span>
+    return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">已解锁</span>
+  }
+  return <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">待解锁</span>
+}
 
 export default function ReportsPage() {
   const { user, logout } = useAuth()
@@ -16,7 +33,7 @@ export default function ReportsPage() {
     fetch(API + '/reports', { headers: { Authorization: 'Bearer ' + user.token } })
       .then(r => r.json()).then(d => { if (d.success) setReports(d.data) })
       .catch(() => {}).finally(() => setLoading(false))
-  }, [user])
+  }, [user, navigate])
 
   const handleLogout = () => { logout(); navigate('/') }
 
@@ -50,9 +67,12 @@ export default function ReportsPage() {
             {reports.map(r => (
               <Link key={r.id} to={`/report/${r.id}`}
                 className="block bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition border border-slate-100">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2">
                   <h3 className="font-semibold text-slate-900">{r.name} 的八字解读</h3>
-                  <span className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString('zh-CN')}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {statusBadge(r)}
+                    <span className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString('zh-CN')}</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500">
                   <span>{r.gender === 'male' ? '男' : '女'}</span>

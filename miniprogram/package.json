@@ -1,0 +1,7 @@
+{
+  "name": "fortell365-miniprogram",
+  "private": true,
+  "dependencies": {
+    "lunar-javascript": "^1.7.7"
+  }
+}
